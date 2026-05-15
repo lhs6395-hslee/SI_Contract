@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SI 집행계획서 — Frontend
 
-## Getting Started
+Next.js 16 App Router 기반 프론트엔드.
 
-First, run the development server:
+## 배포 환경
+
+- **URL**: https://si.rayhli.com
+- **런타임**: EKS Fargate (Node.js 20 Alpine)
+- **AI**: AWS Bedrock Claude Sonnet 4 (Next.js API Route에서 호출)
+
+## 주요 페이지
+
+| 경로 | 설명 |
+|------|------|
+| `/login` | 로그인 (Google OAuth + Basic Auth) |
+| `/` | 메인 (리뷰/업로드/익스포트/설정) |
+
+## 환경변수
+
+| 변수 | 설명 | 기본값 |
+|------|------|--------|
+| `NEXT_PUBLIC_FASTAPI_URL` | 백엔드 API URL | `http://localhost:8000` |
+| `CLAUDE_PROVIDER` | AI 제공자 | `bedrock` |
+| `CLAUDE_MODEL` | 모델 ID | `us.anthropic.claude-sonnet-4-20250514-v1:0` |
+| `AWS_REGION` | Bedrock 리전 | `us-east-1` |
+
+## 로컬 개발
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 빌드
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run build
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Docker
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+docker buildx build --platform linux/amd64 \
+  --build-arg NEXT_PUBLIC_FASTAPI_URL=https://si-api.rayhli.com \
+  -f infrastructure/docker/frontend/Dockerfile \
+  -t si-contract/frontend:latest .
+```
