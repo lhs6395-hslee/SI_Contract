@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: si-contract
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: si-contract
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backend
+        app.kubernetes.io/component: backend
+        app.kubernetes.io/part-of: si-contract
+    spec:
+      serviceAccountName: backend
+      containers:
+        - name: backend
+          image: 264594923212.dkr.ecr.ap-northeast-2.amazonaws.com/si-contract/backend:v1
+          ports:
+            - containerPort: 8001
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          env:
+            - name: S3_FILES_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: S3_FILES_BUCKET
+            - name: S3_TEMPLATES_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: S3_TEMPLATES_BUCKET
+            - name: DYNAMODB_TABLE
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DYNAMODB_TABLE
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: ANTHROPIC_API_KEY
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: DATABASE_URL
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8001
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3

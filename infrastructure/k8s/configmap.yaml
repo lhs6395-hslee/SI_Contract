@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: si-contract
+  labels:
+    app.kubernetes.io/name: app-config
+    app.kubernetes.io/component: config
+    app.kubernetes.io/part-of: si-contract
+data:
+  CLAUDE_PROVIDER: "bedrock"
+  CLAUDE_MODEL: "us.anthropic.claude-sonnet-4-20250514-v1:0"
+  S3_FILES_BUCKET: "si-contract-dev-files"
+  S3_TEMPLATES_BUCKET: "si-contract-dev-templates"
+  DYNAMODB_TABLE: "si-contract-dev-projects"
+  DYNAMODB_PIPELINE_TABLE: "si-contract-dev-pipeline-state"

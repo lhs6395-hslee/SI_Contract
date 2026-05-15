@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: si-contract
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: si-contract
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: frontend
+        app.kubernetes.io/component: frontend
+        app.kubernetes.io/part-of: si-contract
+    spec:
+      serviceAccountName: frontend
+      containers:
+        - name: frontend
+          image: 264594923212.dkr.ecr.ap-northeast-2.amazonaws.com/si-contract/frontend:v1
+          ports:
+            - containerPort: 3000
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 250m
+              memory: 512Mi
+          env:
+            - name: NEXT_PUBLIC_FASTAPI_URL
+              value: "http://backend.si-contract.svc.cluster.local:8001"
+            - name: CLAUDE_PROVIDER
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: CLAUDE_PROVIDER
+            - name: CLAUDE_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: CLAUDE_MODEL
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: ANTHROPIC_API_KEY
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
