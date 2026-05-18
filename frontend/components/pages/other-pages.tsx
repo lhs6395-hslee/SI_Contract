@@ -5,15 +5,15 @@ import { useApp } from "@/lib/store";
 import { fmt } from "@/lib/format";
 import type { ProjectStatus } from "@/lib/types";
 import {
-  AlertTriangle, Check, X, ArrowRight, ArrowLeft, Download,
-  Pencil, Plus, ChevronRight, Loader2, CloudUpload, Lock,
+  Check, X, ArrowRight, ArrowLeft, Download,
+  Pencil, Plus, ChevronRight, Loader2, CloudUpload, Lock, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
-import { apiExport, apiStartPipeline, apiPipelineResult } from "@/lib/api";
+import { apiExport, apiStartPipeline, apiPipelineResult, apiSyncRevision } from "@/lib/api";
 import type { PipelineResult } from "@/lib/api";
 
 // ─── Conflicts ───
@@ -222,6 +222,8 @@ export function ExportPage() {
     setGenerating(true);
     setDownloaded(false);
     try {
+      // 파이프라인 실행 전 현재 차수 최신 데이터를 서버에 동기화
+      await apiSyncRevision(projectId, revision, extractedData as unknown as Record<string, unknown>);
       const result = await apiStartPipeline(projectId, extractedData as unknown as Record<string, unknown>, revision);
       setPipelineResult(result);
       // 생성 완료 후 자동 다운로드
@@ -306,31 +308,11 @@ export function ExportPage() {
             </div>
             <div className="h-px bg-border" />
 
-            <div className="space-y-3">
-              {pipelineResult && (
-                <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
-                  pipelineResult.review?.verdict === "approved" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" :
-                  pipelineResult.review?.verdict === "needs_revision" ? "bg-amber-50 text-amber-700" :
-                  "bg-red-50 text-red-700"
-                }`}>
-                  {pipelineResult.review?.verdict === "approved" ? <Check className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-                  검증 {pipelineResult.review?.verdict === "approved" ? "통과" : pipelineResult.review?.verdict === "needs_revision" ? "수정 필요" : "실패"}
-                  <span className="ml-auto text-xs">{((pipelineResult.review?.score || 0) * 100).toFixed(0)}점</span>
-                </div>
-              )}
-
-              {pipelineResult?.review?.issues && pipelineResult.review.issues.length > 0 && (
-                <div className="text-xs text-red-600 space-y-1">
-                  {pipelineResult.review.issues.map((issue, i) => <div key={i}>- {issue}</div>)}
-                </div>
-              )}
-
-              <Button className="w-full" size="lg" onClick={doGenerate} disabled={generating || downloading}>
-                {generating ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> 집행계획서 생성 중…</> :
-                  downloading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> 다운로드 중…</> :
-                  <><Download className="h-4 w-4 mr-2" /> 결과 파일 생성 · 다운로드</>}
-              </Button>
-            </div>
+            <Button className="w-full" size="lg" onClick={doGenerate} disabled={generating || downloading}>
+              {generating ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> 집행계획서 생성 중…</> :
+                downloading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> 다운로드 중…</> :
+                <><Download className="h-4 w-4 mr-2" /> 결과 파일 생성 · 다운로드</>}
+            </Button>
 
             {downloaded && <p className="text-center text-xs text-emerald-600 font-semibold">{extractedData?.projectName}_집행계획서.xlsx 다운로드 완료</p>}
           </CardContent>

@@ -131,13 +131,13 @@ export function ReviewPage() {
     });
   };
 
-  const BASIC_KEYS = ["projectName", "client", "contractor", "contractType", "paymentTerms", "pm", "salesOwner", "startDate", "endDate", "revenue", "cost", "profit", "profitRate", "indirectCost", "scope", "specialNotes", "fiscalYear", "writtenDate"];
+  const BASIC_KEYS = ["projectName", "projectCode", "client", "contractor", "contractType", "paymentTerms", "pm", "salesOwner", "startDate", "endDate", "revenue", "cost", "profit", "profitRate", "indirectCost", "scope", "specialNotes", "fiscalYear", "writtenDate"];
   const basicFields = E ? BASIC_KEYS.filter((k) => E[k]?.value != null && E[k]?.value !== "").length : 0;
   const guessEntries = E ? Object.entries(E).filter(([k, v]) => v?.confidence === "guess" && !verifiedFields.has(k)) : [];
   const guessCount = guessEntries.length;
 
   const FIELD_LABELS: Record<string, string> = {
-    projectName: "사업명", client: "발주처", contractor: "계약처",
+    projectName: "사업명", projectCode: "공사코드", client: "발주처", contractor: "계약처",
     contractType: "계약방법", paymentTerms: "수금조건", pm: "PM",
     salesOwner: "영업담당자", startDate: "시작일", endDate: "종료일",
     revenue: "매출", cost: "매입", profit: "영업이익", profitRate: "이익률",
@@ -812,7 +812,7 @@ function KVRow({ label, value, source, confidence, isAmount, isDate, isYear, onC
             {changedThisRevision && source === "수동 수정" && changedFrom != null && String(changedFrom) !== "" && (
               <span className="text-[10px] text-muted-foreground line-through">{formatVal(String(changedFrom))}</span>
             )}
-            {aiSuggestion && aiSuggestion.value != null && (
+            {aiSuggestion && aiSuggestion.value != null && !isSameVal(aiSuggestion.value, value) && (
               <button
                 className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-[11px] text-blue-700 hover:bg-blue-100 transition-colors shrink-0"
                 title={`AI 제안값으로 교체: ${aiSuggestion.value}`}
@@ -899,6 +899,7 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
   }, [E.revenue?.value, E.cost?.value, E.profit?.value, E.indirectCost?.value]);
 
   const projectName = fld("projectName", "", "");
+  const projectCode = fld("projectCode", "", "");
   const clientName = fld("client", "", "");
   const contractor = fld("contractor", "", "");
   const contractType = fld("contractType", "", "");
@@ -970,6 +971,7 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
           <CardContent>
             <div className="grid grid-cols-[100px_1fr]">
               <KVRow label="사업명" value={projectName.value as string} source={projectName.source} confidence={projectName.confidence} changedFrom={projectName.changedFrom} revision={revision} editLog={editLog["projectName"]} aiSuggestion={aiSuggestions["projectName"]} onChange={(v) => updateField("projectName", v)} onAiAccept={(v) => updateField("projectName", v, "AI 제안")} />
+              <KVRow label="공사코드" value={projectCode.value as string} source={projectCode.source} confidence={projectCode.confidence} changedFrom={projectCode.changedFrom} revision={revision} editLog={editLog["projectCode"]} aiSuggestion={aiSuggestions["projectCode"]} onChange={(v) => updateField("projectCode", v)} onAiAccept={(v) => updateField("projectCode", v, "AI 제안")} />
               <KVRow label="발주처" value={clientName.value as string} source={clientName.source} confidence={clientName.confidence} changedFrom={clientName.changedFrom} revision={revision} editLog={editLog["client"]} aiSuggestion={aiSuggestions["client"]} onChange={(v) => updateField("client", v)} onAiAccept={(v) => updateField("client", v, "AI 제안")} />
               <KVRow label="계약처" value={contractor.value as string} source={contractor.source} confidence={contractor.confidence} changedFrom={contractor.changedFrom} revision={revision} editLog={editLog["contractor"]} aiSuggestion={aiSuggestions["contractor"]} onChange={(v) => updateField("contractor", v)} onAiAccept={(v) => updateField("contractor", v, "AI 제안")} />
               <KVRow label="계약방법" value={contractType.value as string} source={contractType.source} confidence={contractType.confidence} changedFrom={contractType.changedFrom} revision={revision} editLog={editLog["contractType"]} aiSuggestion={aiSuggestions["contractType"]} onChange={(v) => updateField("contractType", v)} onAiAccept={(v) => updateField("contractType", v, "AI 제안")} />

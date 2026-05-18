@@ -68,7 +68,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
     allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
 
@@ -477,6 +477,21 @@ async def create_project(request: StarletteRequest):
     if "id" not in data:
         data["id"] = f"p_{int(time.time() * 1000)}"
     saved = save_project(data)
+    return saved
+
+
+@app.patch("/api/projects/{project_id}/revision/{revision}")
+async def patch_project_revision(project_id: str, revision: int, request: StarletteRequest):
+    """현재 차수 데이터만 머지 저장 — 다른 차수는 그대로 유지."""
+    data = _sanitize_surrogates(await _safe_json_body(request))
+    existing = load_project(project_id) or {}
+    revisions = existing.get("revisions", {})
+    revisions[str(revision)] = data.get("extractedData", data)
+    existing["id"] = project_id
+    existing["revisions"] = revisions
+    existing["revision"] = revision
+    existing["extracted"] = data.get("extractedData", data)
+    saved = save_project(existing)
     return saved
 
 

@@ -65,35 +65,43 @@ class FeeSheetWriter(SheetWriter):
 
             self._write_cell_direct(ws, f"H{row}", item.contract_qty, f"fee_items[{i}].contract_qty")
             self._write_cell_direct(ws, f"I{row}", item.contract_unit_price, f"fee_items[{i}].contract_unit_price")
-            # J: 일할계산으로 H*I와 다를 때만 직접 입력
-            if item.contract_amount and abs(item.contract_amount - item.contract_qty * item.contract_unit_price) > 1:
-                self._write_cell_direct(ws, f"J{row}", item.contract_amount, f"fee_items[{i}].contract_amount (일할계산)")
+            # J: 수식 없으면 값 직접 입력 (일할계산이면 그 값, 아니면 H*I)
+            contract_amount = item.contract_amount if item.contract_amount else round(item.contract_qty * item.contract_unit_price)
+            self._write_cell_direct_force(ws, f"J{row}", contract_amount, f"fee_items[{i}].contract_amount")
 
             self._write_cell_direct(ws, f"K{row}", item.execution_qty, f"fee_items[{i}].execution_qty")
             self._write_cell_direct(ws, f"L{row}", item.execution_unit_price, f"fee_items[{i}].execution_unit_price")
-            if item.execution_amount and abs(item.execution_amount - item.execution_qty * item.execution_unit_price) > 1:
-                self._write_cell_direct(ws, f"M{row}", item.execution_amount, f"fee_items[{i}].execution_amount (일할계산)")
+            # M: 수식 없으면 값 직접 입력
+            execution_amount = item.execution_amount if item.execution_amount else round(item.execution_qty * item.execution_unit_price)
+            self._write_cell_direct_force(ws, f"M{row}", execution_amount, f"fee_items[{i}].execution_amount")
 
             self._write_cell_direct(ws, f"Q{row}", item.current_period_qty, f"fee_items[{i}].current_period_qty")
             self._write_cell_direct(ws, f"R{row}", item.execution_unit_price, f"fee_items[{i}].execution_unit_price (당기단가=집행단가)")
-            if item.current_period_amount and abs(item.current_period_amount - item.current_period_qty * item.execution_unit_price) > 1:
-                self._write_cell_direct(ws, f"S{row}", item.current_period_amount, f"fee_items[{i}].current_period_amount (일할계산)")
+            # S: 수식 없으면 값 직접 입력
+            current_amount = item.current_period_amount if item.current_period_amount else round(item.current_period_qty * item.execution_unit_price)
+            self._write_cell_direct_force(ws, f"S{row}", current_amount, f"fee_items[{i}].current_period_amount")
 
             if item.vendor:
                 self._write_cell_direct(ws, f"AJ{row}", item.vendor, f"fee_items[{i}].vendor")
 
     def _write_cell_direct(self, ws, cell_ref: str, value, source: str):
-        """행 삽입 후에도 안전하게 셀에 직접 쓰기 + 로그."""
+        """행 삽입 후에도 안전하게 셀에 직접 쓰기 + 로그. 수식 셀은 스킵."""
         from models import InputUsed
         cell = ws[cell_ref]
-        # formula_cell만 스킵 (삽입된 행은 label_cell이므로 허용)
         if cell.data_type == "f":
             return
         cell.value = value
         log_value = value if isinstance(value, (str, int, float, type(None))) else str(value)
         self.inputs_used.append(InputUsed(
-            field=cell_ref,
-            value=log_value,
-            cell=cell_ref,
-            source=source,
+            field=cell_ref, value=log_value, cell=cell_ref, source=source,
+        ))
+
+    def _write_cell_direct_force(self, ws, cell_ref: str, value, source: str):
+        """수식 셀도 포함해서 값을 강제로 입력 (J/M/S 금액 셀용)."""
+        from models import InputUsed
+        cell = ws[cell_ref]
+        cell.value = value
+        log_value = value if isinstance(value, (str, int, float, type(None))) else str(value)
+        self.inputs_used.append(InputUsed(
+            field=cell_ref, value=log_value, cell=cell_ref, source=source,
         ))

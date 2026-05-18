@@ -206,6 +206,19 @@ export async function apiSaveProject(project: ProjectData): Promise<void> {
   if (!res.ok) throw new Error(`프로젝트 저장 실패: ${res.status}`);
 }
 
+export async function apiSyncRevision(
+  projectId: string,
+  revision: number,
+  extractedData: Record<string, unknown>,
+): Promise<void> {
+  const res = await fetch(`${FASTAPI_BASE}/api/projects/${projectId}/revision/${revision}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ extractedData }),
+  });
+  if (!res.ok) throw new Error(`차수 저장 실패: ${res.status}`);
+}
+
 export async function apiDeleteProject(projectId: string): Promise<void> {
   const res = await fetch(`${FASTAPI_BASE}/api/projects/${projectId}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`프로젝트 삭제 실패: ${res.status}`);

@@ -18,24 +18,25 @@ VERSION="v$(date +%Y%m%d%H%M)"
 
 build_frontend() {
   echo "🔨 Frontend 빌드 ($VERSION)..."
-  docker buildx build --platform linux/amd64 \
+  cp .dockerignore.frontend .dockerignore
+  docker build --platform linux/amd64 \
     --build-arg NEXT_PUBLIC_FASTAPI_URL=https://si-api.rayhli.com \
     -f infrastructure/docker/frontend/Dockerfile \
     -t ${REGISTRY}/si-contract/frontend:${VERSION} \
-    --push .
-  # ECR push 실제 확인
-  aws ecr describe-images --repository-name si-contract/frontend --image-ids imageTag=${VERSION} --region $REGION > /dev/null
+    . || { cp .dockerignore.backend .dockerignore; echo "❌ Frontend 빌드 실패"; exit 1; }
+  cp .dockerignore.backend .dockerignore
+  docker push ${REGISTRY}/si-contract/frontend:${VERSION} || { echo "❌ Frontend ECR push 실패"; exit 1; }
   echo "✅ Frontend ${VERSION} pushed"
 }
 
 build_backend() {
   echo "🔨 Backend 빌드 ($VERSION)..."
-  docker buildx build --platform linux/amd64 \
+  cp .dockerignore.backend .dockerignore
+  docker build --platform linux/amd64 \
     -f infrastructure/docker/backend/Dockerfile \
     -t ${REGISTRY}/si-contract/backend:${VERSION} \
-    --push .
-  # ECR push 실제 확인
-  aws ecr describe-images --repository-name si-contract/backend --image-ids imageTag=${VERSION} --region $REGION > /dev/null
+    . || { echo "❌ Backend 빌드 실패"; exit 1; }
+  docker push ${REGISTRY}/si-contract/backend:${VERSION} || { echo "❌ Backend ECR push 실패"; exit 1; }
   echo "✅ Backend ${VERSION} pushed"
 }
 
@@ -65,9 +66,10 @@ case "${1:-all}" in
     build_backend && deploy_backend && wait_ready backend
     ;;
   all)
-    build_frontend &
-    build_backend &
-    wait
+    build_frontend & FE_PID=$!
+    build_backend  & BE_PID=$!
+    wait $FE_PID || { echo "❌ Frontend 빌드 실패 — 배포 중단"; kill $BE_PID 2>/dev/null; exit 1; }
+    wait $BE_PID || { echo "❌ Backend 빌드 실패 — 배포 중단"; exit 1; }
     deploy_frontend
     deploy_backend
     wait_ready frontend

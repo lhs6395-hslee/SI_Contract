@@ -1,0 +1,31 @@
+# 백엔드 (프론트엔드 빌드에 불필요)
+backend/
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/results/
+backend/storage/
+backend/**/__pycache__/
+backend/**/*.pyc
+
+# 문서/스펙
+specs/
+backup/
+*.md
+README.md
+
+# 인프라 (빌드 시 불필요)
+infrastructure/
+
+# 개발 도구
+.git/
+.gitignore
+.claude/
+scripts/
+
+# 프론트엔드 불필요 파일
+frontend/.next/
+frontend/node_modules/
+
+# OS
+.DS_Store
+**/.DS_Store

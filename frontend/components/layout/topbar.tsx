@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useApp } from "@/lib/store";
 import {
-  Search, Moon, Sun, ChevronDown, Plus, Check, Lock,
+  Search, Moon, Sun, ChevronDown, Plus, Check, Lock, LogOut, User,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTheme } from "next-themes";
+import { getUser, logout, type AuthUser } from "@/lib/auth";
 
 const ROUTE_NAME: Record<string, string> = {
   upload: "업로드",
@@ -36,6 +37,23 @@ export function Topbar({ onAddRevision }: { onAddRevision: () => void }) {
   const { route, setRoute, projectId, projects, isNewProject, revision, setRevision, maxRevision, locked } = useApp();
   const { theme, setTheme } = useTheme();
   const [revOpen, setRevOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setUser(getUser()); }, []);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const initial = user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "?";
 
   const project = isNewProject ? null : projects.find((p) => p.id === projectId);
 
@@ -116,8 +134,35 @@ export function Topbar({ onAddRevision }: { onAddRevision: () => void }) {
           {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </Button>
 
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
-          A
+        <div className="relative" ref={profileRef}>
+          <button
+            onClick={() => setProfileOpen((v) => !v)}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold hover:opacity-80 transition-opacity"
+          >
+            {initial}
+          </button>
+          {profileOpen && (
+            <div className="absolute right-0 top-10 z-50 w-56 rounded-lg border bg-popover shadow-lg p-1">
+              <div className="px-3 py-2 border-b mb-1">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold shrink-0">
+                    {initial}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">{user?.name || user?.email || "사용자"}</div>
+                    <div className="text-xs text-muted-foreground truncate">{user?.email}</div>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => { setProfileOpen(false); logout(); }}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+              >
+                <LogOut className="h-4 w-4" />
+                로그아웃
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
