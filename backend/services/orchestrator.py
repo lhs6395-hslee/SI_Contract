@@ -17,8 +17,9 @@ from models import (
     SprintContract, StepDef, StepResult, StepStatus,
     PipelineState, PipelineStatus,
 )
-from services.excel.base import load_template
+from services.excel.base import load_template, TEMPLATE_PATH
 from services.excel.common_sheet import CommonSheetWriter
+from services.excel.revision_sheets import apply_revision_sheets
 from services.excel.fee_sheet import FeeSheetWriter
 from services.excel.breakdown_sheet import BreakdownSheetWriter
 from services.excel.cover_sheet import CoverSheetWriter
@@ -92,7 +93,25 @@ async def run_pipeline(
         status=PipelineStatus.running,
     )
 
-    wb = load_template()
+    # 수정집행 시트 처리: revision >= 1이면 차수별 시트를 템플릿에 추가한 임시 파일 사용
+    revision = getattr(contract, 'revision', 0) or 0
+    prev_revisions = getattr(contract, 'prev_revisions', None) or {}
+    all_revisions = sorted([int(k) for k in prev_revisions.keys()])
+    if revision >= 1 and revision not in all_revisions:
+        all_revisions.append(revision)
+
+    if all_revisions:
+        import tempfile
+        tmp_xlsx = Path(tempfile.mktemp(suffix='.xlsx'))
+        try:
+            apply_revision_sheets(TEMPLATE_PATH, tmp_xlsx, all_revisions)
+            wb = openpyxl.load_workbook(str(tmp_xlsx))
+        finally:
+            if tmp_xlsx.exists():
+                tmp_xlsx.unlink()
+    else:
+        wb = load_template()
+
     levels = compute_dependency_levels(contract.steps)
 
     for level_num in sorted(levels.keys()):

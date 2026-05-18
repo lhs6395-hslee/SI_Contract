@@ -303,21 +303,27 @@ class CommonSheetWriter(SheetWriter):
                     if rate_val:
                         self.write_cell(f"{prev_col}{row}", rate_val / 100, source=f"rev{prev_rev_num}.{label}")
 
-        # ─── 수정집행 시트 참조 수식 (revision >= 1인 경우, 해당 차수 열에 입력) ───
+        # ─── 수정집행 시트 참조 수식 (revision >= 1인 경우) ───
+        # 각 차수마다 독립된 "(N차)" 시트를 참조하는 수식을 해당 열에 삽입
         # 수정집행 집계표 열 구조: F=계약당초, H=계약변경, J=집행당초, L=집행변경
-        # 공통 시트 F열(1차)/G열(2차) 등에 수정집행 집계표를 참조하는 수식 삽입
+        all_revs = sorted(
+            [int(k) for k in (getattr(self.contract, 'prev_revisions', None) or {}).keys()]
+        )
         if revision >= 1:
-            modified_sheet = "'4. 집행예산집계표 (수정집행)'"
+            all_revs.append(revision)
+        for rev in all_revs:
+            rev_col = _rev_col(rev)
+            agg_sheet = f"'4. 집행예산집계표 ({rev}차)'"
             # 계약금액 (rows 135-138): 재료비/노무비/외주비/경비
-            contract_rows = {135: 10, 136: 13, 137: 19, 138: 22}
-            for r_row, ref_row in contract_rows.items():
-                formula = f"={modified_sheet}!H{ref_row}*1000"
-                self.write_cell(f"{col}{r_row}", formula, source=f"수정집행집계표.계약변경.row{ref_row}")
+            for r_row, ref_row in {135: 10, 136: 13, 137: 19, 138: 22}.items():
+                self.write_cell(f"{rev_col}{r_row}", f"={agg_sheet}!H{ref_row}*1000",
+                                source=f"수정집행집계표({rev}차).계약변경.row{ref_row}")
             # 집행계획 (rows 141-144): 재료비/노무비/외주비/경비
-            plan_rows = {141: 10, 142: 13, 143: 19, 144: 22}
-            for r_row, ref_row in plan_rows.items():
-                formula = f"={modified_sheet}!L{ref_row}*1000"
-                self.write_cell(f"{col}{r_row}", formula, source=f"수정집행집계표.집행변경.row{ref_row}")
+            for r_row, ref_row in {141: 10, 142: 13, 143: 19, 144: 22}.items():
+                self.write_cell(f"{rev_col}{r_row}", f"={agg_sheet}!L{ref_row}*1000",
+                                source=f"수정집행집계표({rev}차).집행변경.row{ref_row}")
             # 영업이익 (rows 148-149)
-            self.write_cell(f"{col}148", f"={modified_sheet}!L42*1000", source="수정집행집계표.영업이익")
-            self.write_cell(f"{col}149", f"={modified_sheet}!M42/100", source="수정집행집계표.영업이익%")
+            self.write_cell(f"{rev_col}148", f"={agg_sheet}!L42*1000",
+                            source=f"수정집행집계표({rev}차).영업이익")
+            self.write_cell(f"{rev_col}149", f"={agg_sheet}!M42/100",
+                            source=f"수정집행집계표({rev}차).영업이익%")
