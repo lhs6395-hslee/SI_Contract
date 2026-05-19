@@ -69,6 +69,12 @@ class SheetWriter:
 
     @property
     def ws(self) -> Worksheet:
+        revision = getattr(self.contract, 'revision', 0) or 0
+        # revision >= 1이면 원본 시트가 (N차)로 rename됨 — 해당 시트명 사용
+        if revision >= 1:
+            rev_name = f"{self.sheet_name} ({revision}차)"
+            if rev_name in self.wb.sheetnames:
+                return self.wb[rev_name]
         return self.wb[self.sheet_name]
 
     def write_cell(self, cell_ref: str, value, source: str = "", calc_basis: str = ""):

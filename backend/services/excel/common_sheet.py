@@ -306,6 +306,7 @@ class CommonSheetWriter(SheetWriter):
         # ─── 수정집행 시트 참조 수식 (revision >= 1인 경우) ───
         # 각 차수마다 독립된 "(N차)" 시트를 참조하는 수식을 해당 열에 삽입
         # 수정집행 집계표 열 구조: F=계약당초, H=계약변경, J=집행당초, L=집행변경
+        # 0차는 원본 템플릿 시트("4. 집행예산집계표")를 그대로 사용 — "(0차)" 사본 없음
         all_revs = sorted(
             [int(k) for k in (getattr(self.contract, 'prev_revisions', None) or {}).keys()]
         )
@@ -313,6 +314,8 @@ class CommonSheetWriter(SheetWriter):
             all_revs.append(revision)
         for rev in all_revs:
             rev_col = _rev_col(rev)
+            # 0차/1차 이상 모두 "(N차)" suffix 시트 사용
+            # revision >= 1 export 시 원본 시트가 "(0차)"로 rename됨
             agg_sheet = f"'4. 집행예산집계표 ({rev}차)'"
             # 계약금액 (rows 135-138): 재료비/노무비/외주비/경비
             for r_row, ref_row in {135: 10, 136: 13, 137: 19, 138: 22}.items():

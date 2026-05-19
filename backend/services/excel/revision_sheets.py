@@ -17,7 +17,7 @@ from pathlib import Path
 
 from lxml import etree
 
-# 수정집행 시트 세트: (템플릿 상 이름, sheet 파일명)
+# 수정집행 시트 세트: (수정집행) suffix 버전 (복사 소스)
 _REV_SHEET_TEMPLATE_NAMES = [
     "0. 집행계획(갑지) (수정집행)",
     "4. 집행예산집계표 (수정집행)",
@@ -26,6 +26,17 @@ _REV_SHEET_TEMPLATE_NAMES = [
     "5-2. 회선비산출내역 (수정집행)",
     "5-3. 소모품비산출내역 (수정집행)",
     "5-4. 수수료산출내역 (수정집행)",
+]
+
+# 0차 역할을 하는 원본 시트 이름 → rename 대상 (suffix 없는 원본)
+_ORIGINAL_SHEET_NAMES = [
+    "0. 집행계획(갑지)",
+    "4. 집행예산집계표",
+    "5.집행예산산출내역서",
+    "5-1. 재료비산출내역",
+    "5-2. 회선비산출내역",
+    "5-3. 소모품비산출내역",
+    "5-4. 수수료산출내역",
 ]
 
 _NS_MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -63,19 +74,67 @@ def _replace_e5_in_formula(formula: str, revision: int) -> str:
     return result
 
 
-def _patch_sheet_xml(xml_bytes: bytes, revision: int) -> bytes:
-    """시트 XML에서 공통!E5 참조를 고정 차수값으로 교체."""
+def _patch_sheet_refs_to_zero(xml_bytes: bytes) -> bytes:
+    """원본 시트 XML에서 다른 원본 시트 참조를 (0차) suffix로 교체.
+
+    예: '5.집행예산산출내역서'!G8 → '5.집행예산산출내역서 (0차)'!G8
+    원본 시트들이 (0차)로 rename될 때 내부 수식도 함께 업데이트.
+    XML 내 시트명이 엔티티 인코딩될 수 있으므로 lxml으로 파싱 후 수식 텍스트 교체.
+    """
     tree = etree.fromstring(xml_bytes)
     ns = {'ns': _NS_MAIN}
 
     modified = False
     for c in tree.findall('.//ns:c', ns):
         f = c.find('ns:f', ns)
-        if f is not None and f.text and 'E5' in f.text and '공통' in f.text:
-            new_formula = _replace_e5_in_formula(f.text, revision)
+        if f is not None and f.text:
+            new_formula = f.text
+            for orig_name in _ORIGINAL_SHEET_NAMES:
+                # '시트명'! 패턴
+                old_ref = f"'{orig_name}'!"
+                new_ref = f"'{orig_name} (0차)'!"
+                if old_ref in new_formula:
+                    new_formula = new_formula.replace(old_ref, new_ref)
+                    modified = True
+                # 따옴표 없는 패턴 (공백 없는 시트명)
+                if ' ' not in orig_name:
+                    if f"{orig_name}!" in new_formula:
+                        new_formula = new_formula.replace(f"{orig_name}!", new_ref)
+                        modified = True
             if new_formula != f.text:
                 f.text = new_formula
-                modified = True
+
+    if not modified:
+        return xml_bytes
+    return etree.tostring(tree, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+
+def _patch_sheet_xml(xml_bytes: bytes, revision: int) -> bytes:
+    """시트 XML에서 공통!E5 참조 및 (수정집행) 시트 참조를 (N차)로 교체."""
+    tree = etree.fromstring(xml_bytes)
+    ns = {'ns': _NS_MAIN}
+
+    modified = False
+    for c in tree.findall('.//ns:c', ns):
+        f = c.find('ns:f', ns)
+        if f is None or not f.text:
+            continue
+        new_formula = f.text
+
+        # 공통!E5 → 고정 숫자
+        if '공통' in new_formula and 'E5' in new_formula:
+            new_formula = _replace_e5_in_formula(new_formula, revision)
+
+        # '시트명 (수정집행)'! → '시트명 (N차)'!
+        for tmpl_name in _REV_SHEET_TEMPLATE_NAMES:
+            old_ref = f"'{tmpl_name}'!"
+            new_ref = f"'{_revision_sheet_name(tmpl_name, revision)}'!"
+            if old_ref in new_formula:
+                new_formula = new_formula.replace(old_ref, new_ref)
+
+        if new_formula != f.text:
+            f.text = new_formula
+            modified = True
 
     if not modified:
         return xml_bytes
@@ -187,16 +246,36 @@ def apply_revision_sheets(
                 counter_rid_num += 1
                 counter_file_num += 1
 
+        # 원본 시트들의 파일 경로 수집 (rename 후 내부 수식 교체 대상)
+        original_sheet_files: set[str] = set()
+        for s in sheets_el.findall(f'{{{wb_ns}}}sheet'):
+            sname = s.get('name', '')
+            if sname in _ORIGINAL_SHEET_NAMES:
+                rid = s.get(f'{{{_NS_REL}}}id')
+                rel_el = rels_tree.find(f'{{{pkg_ns}}}Relationship[@Id="{rid}"]')
+                if rel_el is not None:
+                    # Target이 '/xl/worksheets/sheetN.xml' 또는 'worksheets/sheetN.xml' 형태
+                    target = rel_el.get('Target', '').lstrip('/')
+                    if not target.startswith('xl/'):
+                        target = 'xl/' + target
+                    original_sheet_files.add(target)
+
         # Output zip 생성
         output_buf = io.BytesIO()
         with zipfile.ZipFile(output_buf, 'w', compression=zipfile.ZIP_DEFLATED) as zout:
 
             # 기존 파일 복사 (workbook.xml, rels, ContentTypes는 나중에 교체)
+            # 원본 시트 파일은 내부 수식의 시트 참조를 (0차)로 교체
             skip_files = {'xl/workbook.xml', 'xl/_rels/workbook.xml.rels', '[Content_Types].xml'}
             for item in zin.infolist():
                 if item.filename in skip_files:
                     continue
-                zout.writestr(item.filename, zin.read(item.filename))
+                data = zin.read(item.filename)
+                # 원본 시트 파일이면 내부 시트참조를 (0차)로 교체
+                # original_sheet_files는 'xl/worksheets/sheetN.xml' 형태
+                if item.filename in original_sheet_files:
+                    data = _patch_sheet_refs_to_zero(data)
+                zout.writestr(item.filename, data)
 
             # 새 시트 XML 추가 (E5 교체 포함)
             for ns_info in new_sheets:
@@ -206,13 +285,20 @@ def apply_revision_sheets(
                 zout.writestr(f'xl/{ns_info["new_file"]}', patched_xml)
 
             # workbook.xml 수정
-            # 1. 템플릿 수정집행 시트들 숨김 처리
+            # 1. 원본 시트들을 "(0차)"로 rename + 숨김 처리
+            for s in sheets_el.findall(f'{{{wb_ns}}}sheet'):
+                sname = s.get('name', '')
+                if sname in _ORIGINAL_SHEET_NAMES:
+                    s.set('name', sname + ' (0차)')
+                    s.set('state', 'hidden')
+
+            # 2. 템플릿 (수정집행) 시트들 숨김 처리
             for s in sheets_el.findall(f'{{{wb_ns}}}sheet'):
                 sname = s.get('name', '')
                 if sname in _REV_SHEET_TEMPLATE_NAMES:
                     s.set('state', 'hidden')
 
-            # 2. 이전 차수 시트들도 숨김 처리 (이미 있는 경우)
+            # 3. 이전 차수 시트들도 숨김 처리 (이미 있는 경우)
             for s in sheets_el.findall(f'{{{wb_ns}}}sheet'):
                 sname = s.get('name', '')
                 for rev in all_revisions:

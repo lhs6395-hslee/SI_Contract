@@ -37,7 +37,18 @@ export function ReviewPage() {
   const [reExtracting, setReExtracting] = useState(false);
   const [reExtractElapsed, setReExtractElapsed] = useState(0);
   const [allRevisionFiles, setAllRevisionFiles] = useState<Record<string, { name: string; category?: string; size?: number }[]>>({});
+  const [prevRevisionData, setPrevRevisionData] = useState<Record<string, unknown> | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // 이전 차수 데이터 로드 (상단 변경 이력 알림에 사용)
+  useEffect(() => {
+    if (revision <= 0 || !projectId) return;
+    (async () => {
+      const pd = await loadProjectDataAsync(projectId);
+      const prevData = pd?.revisions?.[String(revision - 1)];
+      setPrevRevisionData(prevData ? (prevData.extracted || prevData) : null);
+    })();
+  }, [revision, projectId]);
 
   // 차수별 파일 비교 탭 열릴 때 전체 revision 데이터 로드
   useEffect(() => {
@@ -211,10 +222,14 @@ export function ReviewPage() {
             const prevVal = prevField?.value ?? null;
             const newVal = newExtracted[key]?.value ?? null;
             if (newVal == null || newVal === "") continue;
-            if (prevField?.source === "수동 수정" && !isSameVal(prevVal, newVal)) {
+            // 수동 수정된 필드: 값이 다르거나 수동값이 0인 경우 AI 제안으로 표시
+            const isManual = prevField?.source === "수동 수정";
+            const isDifferent = !isSameVal(prevVal, newVal);
+            const manualIsZero = isManual && (prevVal === 0 || prevVal === "0");
+            if (isManual && (isDifferent || manualIsZero)) {
               aiSuggestions[key] = { value: newVal, source: newExtracted[key]?.source || "AI 추출" };
             } else {
-              if (!isSameVal(prevVal, newVal)) changedFields[key] = { prev: prevVal };
+              if (isDifferent) changedFields[key] = { prev: prevVal };
               merged[key] = newExtracted[key];
               delete aiSuggestions[key];
             }
@@ -332,10 +347,13 @@ export function ReviewPage() {
           const prevVal = prevField?.value ?? null;
           const newVal = newExtracted[key]?.value ?? null;
           if (newVal == null || newVal === "") continue;
-          if (prevField?.source === "수동 수정" && !isSameVal(prevVal, newVal)) {
+          const isManual2 = prevField?.source === "수동 수정";
+          const isDifferent2 = !isSameVal(prevVal, newVal);
+          const manualIsZero2 = isManual2 && (prevVal === 0 || prevVal === "0");
+          if (isManual2 && (isDifferent2 || manualIsZero2)) {
             aiSuggestions[key] = { value: newVal, source: newExtracted[key]?.source || "AI 추출" };
           } else {
-            if (!isSameVal(prevVal, newVal)) changedFields[key] = { prev: prevVal };
+            if (isDifferent2) changedFields[key] = { prev: prevVal };
             merged[key] = newExtracted[key];
             delete aiSuggestions[key];
           }
@@ -607,19 +625,31 @@ export function ReviewPage() {
           <AlertTitle className="text-blue-800 dark:text-blue-200">수정 {revision}차 변경 이력</AlertTitle>
           <AlertDescription className="text-blue-700 dark:text-blue-300">
             {(() => {
-              const changed = extractedData?.changedFields || {};
-              const changedKeys = Object.keys(changed);
-              if (changedKeys.length === 0) return <span>변경 사항 없음</span>;
               const fmt2 = (v: unknown) => {
                 if (v == null) return "-";
                 if (typeof v === "number") return v >= 10000 ? `${(v / 1000).toLocaleString()}천원` : String(v);
                 return String(v);
               };
+              // changedFields가 있으면 사용, 없으면 이전 차수와 직접 비교
+              const storedChanged = extractedData?.changedFields || {};
+              const changed: Record<string, { prev: unknown }> = Object.keys(storedChanged).length > 0
+                ? storedChanged
+                : prevRevisionData
+                  ? Object.fromEntries(
+                      Object.keys(FIELD_LABELS).filter((k) => {
+                        const curr = (E as Record<string, { value?: unknown }>)?.[k]?.value ?? null;
+                        const prev = (prevRevisionData as Record<string, { value?: unknown }>)?.[k]?.value ?? null;
+                        return curr != null && prev != null && String(curr) !== String(prev);
+                      }).map((k) => [k, { prev: (prevRevisionData as Record<string, { value?: unknown }>)?.[k]?.value }])
+                    )
+                  : {};
+              const changedKeys = Object.keys(changed);
+              if (changedKeys.length === 0) return <span>변경 사항 없음</span>;
               return (
                 <div className="mt-2 space-y-1">
                   {changedKeys.map((key) => {
                     const prev = changed[key]?.prev;
-                    const curr = extractedData?.extracted?.[key]?.value;
+                    const curr = (E as Record<string, { value?: unknown }>)?.[key]?.value;
                     return (
                       <div key={key} className="flex items-center gap-2 text-xs">
                         <span className="font-medium min-w-[80px]">{FIELD_LABELS[key] || key}</span>
@@ -924,6 +954,13 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
             <span className="text-sm font-normal text-muted-foreground">천원</span>
           </div>
           <div className="text-xs text-muted-foreground mt-1">{cleanSource(E.revenue?.source) || "VAT 별도"}</div>
+          {aiSuggestions["revenue"] && aiSuggestions["revenue"].value != null && !isSameVal(aiSuggestions["revenue"].value, revenueVal) && (
+            <div className="mt-2 flex items-center gap-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 px-2 py-1.5 text-xs">
+              <span className="text-amber-700 dark:text-amber-400">AI 제안 → {Math.round(Number(aiSuggestions["revenue"].value) / 1000).toLocaleString()}천원</span>
+              <button className="ml-auto text-emerald-600 font-semibold hover:underline" onClick={() => { const n = Number(aiSuggestions["revenue"].value); setRevenueVal(n); updateField("revenue", String(n), "AI 제안"); }}>수락</button>
+              <button className="text-muted-foreground hover:underline" onClick={() => updateField("revenue", String(revenueVal))}>거부</button>
+            </div>
+          )}
         </Card>
         <Card className="p-5">
           <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">매입{E.cost?.source === "수동 수정" && changed.cost && String(changed.cost.prev) !== String(costVal) && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">{revision > 0 ? `${revision}차 수정됨` : "수정됨"}</Badge>}{E.cost?.source === "수동 수정" && !changed.cost && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">수정됨</Badge>}</div>
@@ -932,6 +969,13 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
             <span className="text-sm font-normal text-muted-foreground">천원</span>
           </div>
           <div className="text-xs text-muted-foreground mt-1">{cleanSource(E.cost?.source) || "매출 대비"} · <span className="font-mono font-semibold">{costPct}%</span></div>
+          {aiSuggestions["cost"] && aiSuggestions["cost"].value != null && !isSameVal(aiSuggestions["cost"].value, costVal) && (
+            <div className="mt-2 flex items-center gap-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 px-2 py-1.5 text-xs">
+              <span className="text-amber-700 dark:text-amber-400">AI 제안 → {Math.round(Number(aiSuggestions["cost"].value) / 1000).toLocaleString()}천원</span>
+              <button className="ml-auto text-emerald-600 font-semibold hover:underline" onClick={() => { const n = Number(aiSuggestions["cost"].value); setCostVal(n); updateField("cost", String(n), "AI 제안"); }}>수락</button>
+              <button className="text-muted-foreground hover:underline" onClick={() => updateField("cost", String(costVal))}>거부</button>
+            </div>
+          )}
         </Card>
         <Card className="p-5">
           <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">간접비+일반관리비{E.indirectCost?.source === "수동 수정" && changed.indirectCost && String(changed.indirectCost.prev) !== String(indirectVal) && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">{revision > 0 ? `${revision}차 수정됨` : "수정됨"}</Badge>}{E.indirectCost?.source === "수동 수정" && !changed.indirectCost && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">수정됨</Badge>}</div>
@@ -943,6 +987,13 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
             {cleanSource(E.indirectCost?.source) || "간접비 + 일반관리비"}
             {revenueVal > 0 && <> · <span className="font-mono font-semibold">{(indirectVal / revenueVal * 100).toFixed(1)}%</span></>}
           </div>
+          {aiSuggestions["indirectCost"] && aiSuggestions["indirectCost"].value != null && !isSameVal(aiSuggestions["indirectCost"].value, indirectVal) && (
+            <div className="mt-2 flex items-center gap-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 px-2 py-1.5 text-xs">
+              <span className="text-amber-700 dark:text-amber-400">AI 제안 → {Math.round(Number(aiSuggestions["indirectCost"].value) / 1000).toLocaleString()}천원</span>
+              <button className="ml-auto text-emerald-600 font-semibold hover:underline" onClick={() => { const n = Number(aiSuggestions["indirectCost"].value); setIndirectVal(n); updateField("indirectCost", String(n), "AI 제안"); }}>수락</button>
+              <button className="text-muted-foreground hover:underline" onClick={() => updateField("indirectCost", String(indirectVal))}>거부</button>
+            </div>
+          )}
         </Card>
         <Card className="p-5 border-emerald-200 dark:border-emerald-800">
           <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">영업이익{E.profit?.source === "수동 수정" && changed.profit && String(changed.profit.prev) !== String(profitVal) && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">{revision > 0 ? `${revision}차 수정됨` : "수정됨"}</Badge>}{E.profit?.source === "수동 수정" && !changed.profit && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">수정됨</Badge>}</div>
@@ -951,6 +1002,13 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
             <span className="text-sm font-normal text-muted-foreground">천원</span>
           </div>
           <div className="text-xs text-muted-foreground mt-1">{cleanSource(E.profit?.source) ? `${cleanSource(E.profit?.source)} · ` : ""}이익률 <span className="font-mono font-semibold text-emerald-600">{profitRate}%</span></div>
+          {aiSuggestions["profit"] && aiSuggestions["profit"].value != null && !isSameVal(aiSuggestions["profit"].value, profitVal) && (
+            <div className="mt-2 flex items-center gap-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 px-2 py-1.5 text-xs">
+              <span className="text-amber-700 dark:text-amber-400">AI 제안 → {Math.round(Number(aiSuggestions["profit"].value) / 1000).toLocaleString()}천원</span>
+              <button className="ml-auto text-emerald-600 font-semibold hover:underline" onClick={() => { const n = Number(aiSuggestions["profit"].value); setProfitVal(n); updateField("profit", String(n), "AI 제안"); }}>수락</button>
+              <button className="text-muted-foreground hover:underline" onClick={() => updateField("profit", String(profitVal))}>거부</button>
+            </div>
+          )}
         </Card>
         <Card className="p-5">
           <div className="text-xs text-muted-foreground font-medium">검증</div>

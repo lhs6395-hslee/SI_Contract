@@ -297,7 +297,7 @@ export function ExportPage() {
           <div className="rounded-t-xl bg-foreground text-background px-5 py-4">
             <div className="text-[11px] opacity-60 font-semibold uppercase tracking-wider">요약</div>
             <div className="text-base font-bold mt-0.5">{extractedData?.projectName || "프로젝트"}</div>
-            <div className="text-xs opacity-70">최초(0차)</div>
+            <div className="text-xs opacity-70">{revision === 0 ? "최초(0차)" : `수정 ${revision}차`}</div>
           </div>
           <CardContent className="pt-4 space-y-4">
             <div className="grid grid-cols-[1fr_auto] gap-y-2 text-sm">
