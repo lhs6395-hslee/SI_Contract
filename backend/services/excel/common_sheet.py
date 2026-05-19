@@ -76,8 +76,8 @@ class CommonSheetWriter(SheetWriter):
         revision = self.contract.revision
         col = _rev_col(revision)
 
-        # E5: 현재 차수 (갑지 수정집행 시트에서 HLOOKUP으로 참조)
-        self.write_cell("E5", revision, source="현재 차수")
+        # E5: 현재 차수 (갑지 수정집행 시트에서 HLOOKUP으로 참조) — 파란색 셀이라 직접 write
+        self.ws["E5"].value = revision
 
         # 고정 셀 (차수 무관)
         self.write_cell("E3", cf.project_name, source="confirmed_fields.project_name")
