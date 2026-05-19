@@ -13,7 +13,8 @@
 from copy import copy
 from .base import SheetWriter
 
-DATA_START_ROW = 8
+DATA_START_ROW = 8        # 원본(0차) 데이터 시작행
+REV_DATA_START_ROW = 9   # 수정집행(1차~) 데이터 시작행
 DEFAULT_DATA_END_ROW = 16
 DEFAULT_TOTAL_ROW = 17
 DEFAULT_MAX_ITEMS = DEFAULT_DATA_END_ROW - DATA_START_ROW + 1  # 9
@@ -41,45 +42,57 @@ class FeeSheetWriter(SheetWriter):
             return
 
         ws = self.ws
+        revision = getattr(self.contract, 'revision', 0) or 0
+        # 수정집행(1차~) 시트는 row9~, 당초(H/I/J) + 변경(K/L/M) 구조
+        is_rev_sheet = revision >= 1
+        start_row = REV_DATA_START_ROW if is_rev_sheet else DATA_START_ROW
+
         n = len(items)
         extra = max(0, n - DEFAULT_MAX_ITEMS)
-        total_row = DEFAULT_TOTAL_ROW + extra
 
         # 9개 초과 시 합계행 위에 행 삽입 + 서식 복사
         if extra > 0:
-            insert_at = DEFAULT_TOTAL_ROW  # 기존 합계행 위치에 삽입
+            insert_at = DEFAULT_TOTAL_ROW + (1 if is_rev_sheet else 0) + extra - extra
+            insert_at = (REV_DATA_START_ROW + DEFAULT_MAX_ITEMS) if is_rev_sheet else DEFAULT_TOTAL_ROW
             ws.insert_rows(insert_at, amount=extra)
-            # 삽입된 행에 기존 마지막 데이터 행(16행) 서식 복사
-            template_row = DEFAULT_DATA_END_ROW
+            template_row = start_row + DEFAULT_MAX_ITEMS - 1
             for i in range(extra):
                 _copy_row_style(ws, template_row, insert_at + i)
 
         # 모든 항목 입력
         for i, item in enumerate(items):
-            row = DATA_START_ROW + i
+            row = start_row + i
 
             self._write_cell_direct(ws, f"D{row}", item.code, f"fee_items[{i}].code")
             self._write_cell_direct(ws, f"E{row}", item.item_name, f"fee_items[{i}].item_name")
             self._write_cell_direct(ws, f"F{row}", item.spec, f"fee_items[{i}].spec")
             self._write_cell_direct(ws, f"G{row}", item.unit, f"fee_items[{i}].unit")
 
-            self._write_cell_direct(ws, f"H{row}", item.contract_qty, f"fee_items[{i}].contract_qty")
-            self._write_cell_direct(ws, f"I{row}", item.contract_unit_price, f"fee_items[{i}].contract_unit_price")
-            # J: 수식 없으면 값 직접 입력 (일할계산이면 그 값, 아니면 H*I)
-            contract_amount = item.contract_amount if item.contract_amount else round(item.contract_qty * item.contract_unit_price)
-            self._write_cell_direct_force(ws, f"J{row}", contract_amount, f"fee_items[{i}].contract_amount")
-
-            self._write_cell_direct(ws, f"K{row}", item.execution_qty, f"fee_items[{i}].execution_qty")
-            self._write_cell_direct(ws, f"L{row}", item.execution_unit_price, f"fee_items[{i}].execution_unit_price")
-            # M: 수식 없으면 값 직접 입력
-            execution_amount = item.execution_amount if item.execution_amount else round(item.execution_qty * item.execution_unit_price)
-            self._write_cell_direct_force(ws, f"M{row}", execution_amount, f"fee_items[{i}].execution_amount")
-
-            self._write_cell_direct(ws, f"Q{row}", item.current_period_qty, f"fee_items[{i}].current_period_qty")
-            self._write_cell_direct(ws, f"R{row}", item.execution_unit_price, f"fee_items[{i}].execution_unit_price (당기단가=집행단가)")
-            # S: 수식 없으면 값 직접 입력
-            current_amount = item.current_period_amount if item.current_period_amount else round(item.current_period_qty * item.execution_unit_price)
-            self._write_cell_direct_force(ws, f"S{row}", current_amount, f"fee_items[{i}].current_period_amount")
+            if is_rev_sheet:
+                # 수정집행 시트: K=변경수량, L=변경단가, M=변경금액
+                self._write_cell_direct(ws, f"K{row}", item.execution_qty, f"fee_items[{i}].execution_qty")
+                self._write_cell_direct(ws, f"L{row}", item.execution_unit_price, f"fee_items[{i}].execution_unit_price")
+                execution_amount = item.execution_amount if item.execution_amount else round(item.execution_qty * item.execution_unit_price)
+                self._write_cell_direct_force(ws, f"M{row}", execution_amount, f"fee_items[{i}].execution_amount")
+                # 당기: Q=변경당기수량, R=단가, S=금액
+                self._write_cell_direct(ws, f"Q{row}", item.current_period_qty, f"fee_items[{i}].current_period_qty")
+                self._write_cell_direct(ws, f"R{row}", item.execution_unit_price, f"fee_items[{i}].execution_unit_price (당기단가)")
+                current_amount = item.current_period_amount if item.current_period_amount else round(item.current_period_qty * item.execution_unit_price)
+                self._write_cell_direct_force(ws, f"S{row}", current_amount, f"fee_items[{i}].current_period_amount")
+            else:
+                # 원본(0차) 시트: H=계약수량, I=계약단가, J=계약금액, K=집행수량, L=집행단가, M=집행금액
+                self._write_cell_direct(ws, f"H{row}", item.contract_qty, f"fee_items[{i}].contract_qty")
+                self._write_cell_direct(ws, f"I{row}", item.contract_unit_price, f"fee_items[{i}].contract_unit_price")
+                contract_amount = item.contract_amount if item.contract_amount else round(item.contract_qty * item.contract_unit_price)
+                self._write_cell_direct_force(ws, f"J{row}", contract_amount, f"fee_items[{i}].contract_amount")
+                self._write_cell_direct(ws, f"K{row}", item.execution_qty, f"fee_items[{i}].execution_qty")
+                self._write_cell_direct(ws, f"L{row}", item.execution_unit_price, f"fee_items[{i}].execution_unit_price")
+                execution_amount = item.execution_amount if item.execution_amount else round(item.execution_qty * item.execution_unit_price)
+                self._write_cell_direct_force(ws, f"M{row}", execution_amount, f"fee_items[{i}].execution_amount")
+                self._write_cell_direct(ws, f"Q{row}", item.current_period_qty, f"fee_items[{i}].current_period_qty")
+                self._write_cell_direct(ws, f"R{row}", item.execution_unit_price, f"fee_items[{i}].execution_unit_price (당기단가=집행단가)")
+                current_amount = item.current_period_amount if item.current_period_amount else round(item.current_period_qty * item.execution_unit_price)
+                self._write_cell_direct_force(ws, f"S{row}", current_amount, f"fee_items[{i}].current_period_amount")
 
             if item.vendor:
                 self._write_cell_direct(ws, f"AJ{row}", item.vendor, f"fee_items[{i}].vendor")
