@@ -96,11 +96,12 @@ async def run_pipeline(
     # 수정집행 시트 처리: revision >= 1이면 차수별 시트를 템플릿에 추가한 임시 파일 사용
     revision = getattr(contract, 'revision', 0) or 0
     prev_revisions = getattr(contract, 'prev_revisions', None) or {}
-    all_revisions = sorted([int(k) for k in prev_revisions.keys()])
-    if revision >= 1 and revision not in all_revisions:
-        all_revisions.append(revision)
+    # 0차~현재차수 모두 포함 (prev_revisions가 비어도 revision 기준으로 생성)
+    all_revisions = sorted(set(
+        [int(k) for k in prev_revisions.keys()] + (list(range(revision + 1)) if revision >= 1 else [])
+    ))
 
-    if all_revisions:
+    if revision >= 1:
         import tempfile
         tmp_xlsx = Path(tempfile.mktemp(suffix='.xlsx'))
         try:
