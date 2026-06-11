@@ -289,19 +289,28 @@ async def parse_stored_pdf_images(project_id: str, filename: str, revision: Opti
     return {"filename": filename, "images": images}
 
 
+# ─── AI Service 라우팅 (Feature Flag) ──────────────────────
+USE_AI_SERVICE = os.getenv("USE_AI_SERVICE", "false").lower() == "true"
+AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://ai-service.si-contract.svc.cluster.local:8001")
+
+
 # ─── AI 문서 분류 ─────────────────────────────────────────
 
 @app.post("/api/classify")
 async def classify_file(file: UploadFile = File(...)):
     """파일을 읽고 Claude로 문서 종류 분류."""
     from services.file_parser import extract_text
-    from services.claude_api import classify_document
-
     content = await file.read()
     text = extract_text(file.filename, content)
-    result = classify_document(file.filename, text)
 
-    return result
+    if USE_AI_SERVICE:
+        import httpx
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(f"{AI_SERVICE_URL}/classify", json={"filename": file.filename, "text": text})
+            return resp.json()
+
+    from services.claude_api import classify_document
+    return classify_document(file.filename, text)
 
 
 # ─── AI 값 추출 ───────────────────────────────────────────
@@ -310,19 +319,20 @@ async def classify_file(file: UploadFile = File(...)):
 async def extract_fields(files: list[UploadFile] = File(...)):
     """여러 파일에서 집행계획서 필드값 추출."""
     from services.file_parser import extract_text
-    from services.claude_api import extract_all_fields
-
     documents = []
     for f in files:
         content = await f.read()
         text = extract_text(f.filename, content)
-        documents.append({
-            "filename": f.filename,
-            "text": text,
-        })
+        documents.append({"filename": f.filename, "text": text})
 
-    result = extract_all_fields(documents)
-    return result
+    if USE_AI_SERVICE:
+        import httpx
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(f"{AI_SERVICE_URL}/extract", json={"documents": documents})
+            return resp.json()
+
+    from services.claude_api import extract_all_fields
+    return extract_all_fields(documents)
 
 
 # ─── 교차 검증 ────────────────────────────────────────────
@@ -330,8 +340,13 @@ async def extract_fields(files: list[UploadFile] = File(...)):
 @app.post("/api/validate")
 async def validate_fields(data: dict):
     """추출된 값 교차 검증 — 충돌 감지."""
-    from services.claude_api import cross_validate
+    if USE_AI_SERVICE:
+        import httpx
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(f"{AI_SERVICE_URL}/validate", json=data)
+            return resp.json()
 
+    from services.claude_api import cross_validate
     conflicts = cross_validate(data)
     return {"conflicts": conflicts}
 
