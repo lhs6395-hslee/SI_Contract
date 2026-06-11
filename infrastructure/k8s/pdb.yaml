@@ -4,7 +4,7 @@ metadata:
   name: frontend-pdb
   namespace: si-contract
 spec:
-  minAvailable: 0
+  maxUnavailable: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: frontend
@@ -15,7 +15,7 @@ metadata:
   name: backend-pdb
   namespace: si-contract
 spec:
-  minAvailable: 0
+  maxUnavailable: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: backend

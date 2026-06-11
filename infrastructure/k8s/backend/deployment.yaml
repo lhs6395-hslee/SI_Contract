@@ -9,6 +9,12 @@ metadata:
     app.kubernetes.io/part-of: si-contract
 spec:
   replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: backend
@@ -20,9 +26,18 @@ spec:
         app.kubernetes.io/part-of: si-contract
     spec:
       serviceAccountName: backend
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: backend
-          image: 264594923212.dkr.ecr.ap-northeast-2.amazonaws.com/si-contract/backend:4909eb5
+          image: 264594923212.dkr.ecr.ap-northeast-2.amazonaws.com/si-contract/backend:e7df585
           ports:
             - containerPort: 8001
               protocol: TCP
@@ -31,8 +46,14 @@ spec:
               cpu: 500m
               memory: 1Gi
             limits:
-              cpu: 500m
+              cpu: "1"
               memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: S3_FILES_BUCKET
               valueFrom:
@@ -49,16 +70,38 @@ spec:
                 configMapKeyRef:
                   name: app-config
                   key: DYNAMODB_TABLE
+            - name: DYNAMODB_PIPELINE_TABLE
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DYNAMODB_PIPELINE_TABLE
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: app-secrets
                   key: DATABASE_URL
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 10
           readinessProbe:
             httpGet:
               path: /api/health
               port: 8001
-            initialDelaySeconds: 15
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8001
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]

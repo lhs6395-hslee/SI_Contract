@@ -9,6 +9,12 @@ metadata:
     app.kubernetes.io/part-of: si-contract
 spec:
   replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: frontend
@@ -20,9 +26,18 @@ spec:
         app.kubernetes.io/part-of: si-contract
     spec:
       serviceAccountName: frontend
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: frontend
-          image: 264594923212.dkr.ecr.ap-northeast-2.amazonaws.com/si-contract/frontend:4909eb5
+          image: 264594923212.dkr.ecr.ap-northeast-2.amazonaws.com/si-contract/frontend:e7df585
           ports:
             - containerPort: 3000
               protocol: TCP
@@ -31,8 +46,14 @@ spec:
               cpu: 250m
               memory: 512Mi
             limits:
-              cpu: 250m
+              cpu: 500m
               memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: NEXT_PUBLIC_FASTAPI_URL
               value: "http://backend.si-contract.svc.cluster.local:8001"
@@ -46,11 +67,28 @@ spec:
                 configMapKeyRef:
                   name: app-config
                   key: CLAUDE_MODEL
+          startupProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 10
           readinessProbe:
             httpGet:
               path: /
               port: 3000
-            initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]
