@@ -102,7 +102,7 @@ def _ai_semantic_review(contract: SprintContract, step_results: dict[int, StepRe
 JSON 배열만 반환하세요."""
 
     try:
-        result = invoke_bedrock(prompt, max_tokens=256)
+        result = invoke_bedrock(prompt, max_tokens=256, task_type="review")
         text = result["content"][0]["text"].strip()
         usage = result.get("usage", {})
         token_info = {"input": usage.get("input_tokens", 0), "output": usage.get("output_tokens", 0)}

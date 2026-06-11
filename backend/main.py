@@ -607,10 +607,19 @@ async def chat(request: StarletteRequest):
 {f"[현재 프로젝트 데이터]{chr(10)}{context}" if context else "[프로젝트 데이터 없음 — 프로젝트를 선택해 주세요]"}"""
 
     from services.claude_api import invoke_bedrock
+    user_id = request.headers.get("X-User-Id", "anonymous")
     try:
-        result = invoke_bedrock(messages[-1]["content"], max_tokens=1024, system=system_prompt)
+        result = invoke_bedrock(
+            messages[-1]["content"], max_tokens=1024, system=system_prompt,
+            task_type="chat_simple", user_id=user_id,
+        )
     except RuntimeError as e:
-        raise HTTPException(502, str(e))
+        err_msg = str(e)
+        if "token_limit_exceeded" in err_msg:
+            parts = err_msg.split("|")
+            reset = parts[1] if len(parts) > 1 else ""
+            raise HTTPException(429, {"error": "token_limit_exceeded", "reset_at": reset})
+        raise HTTPException(502, err_msg)
 
     usage = result.get("usage", {})
 
@@ -622,6 +631,15 @@ async def chat(request: StarletteRequest):
             "output_tokens": usage.get("output_tokens", 0),
         },
     }
+
+
+# ─── 토큰 사용량 조회 ────────────────────────────────────
+
+@app.get("/api/token-usage/{user_id}")
+async def token_usage(user_id: str):
+    """사용자 토큰 사용량 조회."""
+    from services.llm_gateway import get_token_usage
+    return get_token_usage(user_id)
 
 
 # ─── 프로젝트 편집 잠금 (Clash 방지 — 다중 사용자 동시 수정 방지) ───

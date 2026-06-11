@@ -9,7 +9,7 @@ from botocore.config import Config
 _client = None
 _logger = logging.getLogger("si-contract")
 
-BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-opus-4-8-20251101-v1:0")
+BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-6-20250514-v1:0")
 BEDROCK_REGION = os.getenv("AWS_REGION", "ap-northeast-2")
 
 _BEDROCK_CONFIG = Config(
@@ -27,8 +27,20 @@ def get_bedrock_client():
     return _client
 
 
-def invoke_bedrock(prompt: str, max_tokens: int = 2048, system: str | None = None) -> dict:
-    """공용 Bedrock invoke_model — 결과 dict 반환. main.py/reviewer.py에서 재사용."""
+def invoke_bedrock(
+    prompt: str,
+    max_tokens: int = 2048,
+    system: str | None = None,
+    model_id: str | None = None,
+    task_type: str = "sonnet",
+    user_id: str = "default",
+) -> dict:
+    """공용 Bedrock invoke — LLM Gateway 통과 (모델 라우팅 + 토큰 제한)."""
+    from services.llm_gateway import route_model, check_and_record_tokens, reset_at
+
+    if not model_id:
+        model_id = route_model(task_type, user_id)
+
     client = get_bedrock_client()
     body_dict = {
         "anthropic_version": "bedrock-2023-05-31",
@@ -39,26 +51,38 @@ def invoke_bedrock(prompt: str, max_tokens: int = 2048, system: str | None = Non
         body_dict["system"] = system
     try:
         response = client.invoke_model(
-            modelId=BEDROCK_MODEL_ID,
+            modelId=model_id,
             contentType="application/json",
             accept="application/json",
             body=json.dumps(body_dict),
         )
-        return json.loads(response["body"].read())
+        result = json.loads(response["body"].read())
+
+        usage = result.get("usage", {})
+        in_tok = usage.get("input_tokens", 0)
+        out_tok = usage.get("output_tokens", 0)
+        if not check_and_record_tokens(user_id, in_tok, out_tok):
+            raise RuntimeError(f"token_limit_exceeded|{reset_at()}")
+
+        _logger.info("Bedrock call: model=%s task=%s tokens=%d+%d user=%s",
+                      model_id, task_type, in_tok, out_tok, user_id)
+        return result
+    except RuntimeError:
+        raise
     except client.exceptions.ThrottlingException:
         _logger.warning("Bedrock throttled — rate limit exceeded")
         raise RuntimeError("AI 서비스 요청 한도 초과. 잠시 후 다시 시도해 주세요.")
     except client.exceptions.ModelNotReadyException:
-        _logger.warning("Bedrock model not ready: %s", BEDROCK_MODEL_ID)
+        _logger.warning("Bedrock model not ready: %s", model_id)
         raise RuntimeError("AI 모델이 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.")
     except Exception as e:
         _logger.error("Bedrock invoke_model failed: %s", e)
         raise RuntimeError(f"AI 호출 실패: {e}")
 
 
-def _call_claude(prompt: str, max_tokens: int = 2048) -> str:
-    """Bedrock Claude 단일 호출 — JSON 응답 기대."""
-    result = invoke_bedrock(prompt, max_tokens)
+def _call_claude(prompt: str, max_tokens: int = 2048, task_type: str = "sonnet", user_id: str = "default") -> str:
+    """Bedrock Claude 단일 호출 — LLM Gateway 경유."""
+    result = invoke_bedrock(prompt, max_tokens, task_type=task_type, user_id=user_id)
     return result["content"][0]["text"]
 
 
@@ -90,7 +114,7 @@ def classify_document(filename: str, text: str) -> dict:
         filename=filename,
         text=text[:2000] if text else "(텍스트 추출 불가 — 파일명만으로 판단)",
     )
-    raw = _call_claude(prompt, max_tokens=256)
+    raw = _call_claude(prompt, max_tokens=256, task_type="classify")
     return _parse_json(raw, fallback={"category": "unknown", "confidence": 0.3, "reason": "파싱 실패"})
 
 
@@ -135,7 +159,7 @@ def extract_all_fields(documents: list[dict]) -> dict:
         for i, d in enumerate(documents)
     )
     prompt = EXTRACT_PROMPT.format(doc_block=doc_block)
-    raw = _call_claude(prompt, max_tokens=1024)
+    raw = _call_claude(prompt, max_tokens=1024, task_type="extract_full")
     return _parse_json(raw, fallback={"error": "추출 실패"})
 
 
@@ -157,7 +181,7 @@ VALIDATE_PROMPT = """당신은 집행계획서 교차 검증 도우미입니다.
 def cross_validate(data: dict) -> list[dict]:
     """추출 데이터 교차 검증 — 충돌/누락 감지."""
     prompt = VALIDATE_PROMPT.format(data_json=json.dumps(data, ensure_ascii=False, indent=2))
-    raw = _call_claude(prompt, max_tokens=512)
+    raw = _call_claude(prompt, max_tokens=512, task_type="validate")
     result = _parse_json(raw, fallback=[])
     return result if isinstance(result, list) else []
 
