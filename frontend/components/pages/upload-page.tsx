@@ -385,7 +385,7 @@ function ExtractModal({ step, stepDetail, error, fileCount, onCancel }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-lg rounded-xl border bg-card p-6 shadow-2xl">
+      <div className="w-full max-w-lg mx-4 rounded-xl border bg-card p-4 md:p-6 shadow-2xl">
         <h2 className="text-lg font-bold">{error ? "추출 중 오류 발생" : "AI가 문서를 분석 중입니다"}</h2>
         <p className="text-sm text-muted-foreground mt-1">
           {error ? "아래 메시지를 확인하고 다시 시도해 주세요." : `${fileCount}개 문서 처리 중`}

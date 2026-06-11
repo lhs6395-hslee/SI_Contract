@@ -58,8 +58,8 @@ export function Topbar({ onAddRevision }: { onAddRevision: () => void }) {
   const project = isNewProject ? null : projects.find((p) => p.id === projectId);
 
   return (
-    <div className="flex items-center justify-between border-b border-border px-6 py-3 bg-card">
-      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+    <div className="flex items-center justify-between border-b border-border px-4 py-2 md:px-6 md:py-3 bg-card">
+      <div className="flex items-center gap-1.5 text-xs md:text-sm text-muted-foreground ml-10 md:ml-0">
         {route === "projects" || route === "notifications" ? (
           <span className="font-medium text-foreground">{ROUTE_NAME[route]}</span>
         ) : (
@@ -128,10 +128,10 @@ export function Topbar({ onAddRevision }: { onAddRevision: () => void }) {
           </>
         )}
 
-        <div className="relative">
+        <div className="relative hidden md:block">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input placeholder="프로젝트 검색…" className="h-8 w-48 pl-8 text-xs" />
-          <kbd className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground bg-muted px-1 rounded">⌘K</kbd>
+          <Input placeholder="프로젝트 검색…" className="h-8 w-36 lg:w-48 pl-8 text-xs" />
+          <kbd className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground bg-muted px-1 rounded hidden lg:inline">⌘K</kbd>
         </div>
 
         <Button
@@ -151,7 +151,7 @@ export function Topbar({ onAddRevision }: { onAddRevision: () => void }) {
             {initial}
           </button>
           {profileOpen && (
-            <div className="absolute right-0 top-10 z-50 w-56 rounded-lg border bg-popover shadow-lg p-1">
+            <div className="absolute right-0 top-10 z-50 w-48 md:w-56 rounded-lg border bg-popover shadow-lg p-1">
               <div className="px-3 py-2 border-b mb-1">
                 <div className="flex items-center gap-2">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold shrink-0">

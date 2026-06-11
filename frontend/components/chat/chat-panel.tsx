@@ -72,7 +72,7 @@ export function ChatPanel() {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
+        className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-50 h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
       >
         <MessageCircle className="h-5 w-5" />
       </button>
@@ -80,13 +80,13 @@ export function ChatPanel() {
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-96 h-[500px] rounded-xl border bg-card shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed inset-4 z-50 md:inset-auto md:bottom-6 md:right-6 md:w-96 md:h-[500px] rounded-xl border bg-card shadow-2xl flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
         <div className="flex items-center gap-2">
           <MessageCircle className="h-4 w-4 text-primary" />
           <span className="text-sm font-semibold">AI 어시스턴트</span>
-          <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Sonnet</span>
+          <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Opus</span>
         </div>
         <button onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground">
           <X className="h-4 w-4" />

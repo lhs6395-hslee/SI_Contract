@@ -435,7 +435,7 @@ export function AddRevisionModal({ onClose, onAdd }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl border bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-md mx-4 rounded-xl border bg-card p-4 md:p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-bold">수정/이월 차수 추가</h2>
         <p className="text-sm text-muted-foreground mt-1">현재 차수의 데이터는 잠금 처리되고, 새 차수에서 변경점만 기록됩니다.</p>
 

@@ -946,7 +946,7 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
   return (
     <div className="space-y-4">
       {/* Stats — 클릭하여 수정 가능 */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
         <Card className="p-5">
           <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">매출{E.revenue?.source === "수동 수정" && changed.revenue && String(changed.revenue.prev) !== String(revenueVal) && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">{revision > 0 ? `${revision}차 수정됨` : "수정됨"}</Badge>}{E.revenue?.source === "수동 수정" && !changed.revenue && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">수정됨</Badge>}</div>
           <div className="mt-1 flex items-baseline gap-1">
@@ -1023,7 +1023,7 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
         </Card>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <CardHeader><CardTitle className="text-base">계약 정보</CardTitle></CardHeader>
           <CardContent>
@@ -1285,7 +1285,7 @@ function TabCalc() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-muted-foreground">
-                    <th className="text-left py-2 px-3 font-medium min-w-[180px]">품명</th>
+                    <th className="text-left py-2 px-3 font-medium min-w-[120px] md:min-w-[180px]">품명</th>
                     <th className="text-left py-2 px-3 font-medium">규격</th>
                     <th className="text-left py-2 px-3 font-medium">단위</th>
                     <th className="text-right py-2 px-3 font-medium" colSpan={3}>계약</th>
@@ -1468,7 +1468,7 @@ function TabPeople() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-muted-foreground">
-                  <th className="text-left py-2 px-2 font-medium min-w-[160px]">성명 / 직위</th>
+                  <th className="text-left py-2 px-2 font-medium min-w-[100px] md:min-w-[160px]">성명 / 직위</th>
                   <th className="text-left py-2 px-2 font-medium">구분</th>
                   {months.map((m) => <th key={m} className="text-center py-2 px-1 font-medium text-xs">{m}</th>)}
                   <th className="text-center py-2 px-2 font-medium">합계</th>
@@ -1518,7 +1518,7 @@ function TabPeople() {
 
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowAdd(false)}>
-          <div className="w-full max-w-sm rounded-xl border bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-sm mx-4 rounded-xl border bg-card p-4 md:p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-bold mb-4">인원 추가</h3>
             <div className="space-y-3">
               <div className="space-y-1">
@@ -1584,7 +1584,7 @@ function TabSchedule() {
             <thead>
               <tr className="border-b text-muted-foreground">
                 <th className="text-left py-2 px-3 font-medium">공종명</th>
-                {months.map((m) => <th key={m} className="text-center py-2 px-1 font-medium text-xs min-w-[50px]">{m}</th>)}
+                {months.map((m) => <th key={m} className="text-center py-2 px-1 font-medium text-xs min-w-[36px] md:min-w-[50px]">{m}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -1689,7 +1689,7 @@ function TabRates() {
   };
 
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">요율</CardTitle>
@@ -1779,7 +1779,7 @@ function TabOrg() {
             <div className="text-xs text-muted-foreground mt-1">인원 추가 버튼으로 현장조직을 구성하세요.</div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {members.map((m, i) => (
               <div key={i} className={`rounded-lg border p-4 relative group ${m.lead ? "border-blue-200 bg-blue-50/50 dark:bg-blue-950/20" : ""}`}>
                 <button className="absolute top-2 right-2 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => removeMember(i)}>
