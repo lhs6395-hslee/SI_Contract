@@ -6,7 +6,7 @@ import boto3
 
 _client = None
 
-BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "global.anthropic.claude-sonnet-4-6")
+BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-opus-4-8-20251101-v1:0")
 BEDROCK_REGION = os.getenv("AWS_REGION", "ap-northeast-2")
 
 

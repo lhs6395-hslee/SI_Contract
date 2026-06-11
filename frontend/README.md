@@ -6,7 +6,7 @@ Next.js 16 App Router 기반 프론트엔드.
 
 - **URL**: https://si.rayhli.com
 - **런타임**: EKS Fargate (Node.js 20 Alpine)
-- **AI**: AWS Bedrock Claude Sonnet 4 (Next.js API Route에서 호출)
+- **AI**: AWS Bedrock Claude Opus 4.8 (Next.js API Route에서 호출)
 
 ## 주요 페이지
 
@@ -21,8 +21,8 @@ Next.js 16 App Router 기반 프론트엔드.
 |------|------|--------|
 | `NEXT_PUBLIC_FASTAPI_URL` | 백엔드 API URL | `http://localhost:8000` |
 | `CLAUDE_PROVIDER` | AI 제공자 | `bedrock` |
-| `CLAUDE_MODEL` | 모델 ID | `us.anthropic.claude-sonnet-4-20250514-v1:0` |
-| `AWS_REGION` | Bedrock 리전 | `us-east-1` |
+| `CLAUDE_MODEL` | 모델 ID | `us.anthropic.claude-opus-4-8-20251101-v1:0` |
+| `AWS_REGION` | Bedrock 리전 | `ap-northeast-2` |
 
 ## 로컬 개발
 

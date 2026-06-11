@@ -117,7 +117,7 @@ JSON 배열만 반환하세요."""
             "max_tokens": 256,
             "messages": [{"role": "user", "content": prompt}],
         })
-        model_id = os.getenv("BEDROCK_MODEL_ID", "global.anthropic.claude-sonnet-4-6")
+        model_id = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-opus-4-8-20251101-v1:0")
         response = client.invoke_model(
             modelId=model_id,
             contentType="application/json",

@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/part-of: si-contract
 data:
   CLAUDE_PROVIDER: "bedrock"
-  CLAUDE_MODEL: "us.anthropic.claude-sonnet-4-20250514-v1:0"
+  CLAUDE_MODEL: "us.anthropic.claude-opus-4-8-20251101-v1:0"
   S3_FILES_BUCKET: "si-contract-dev-files"
   S3_TEMPLATES_BUCKET: "si-contract-dev-templates"
   DYNAMODB_TABLE: "si-contract-dev-projects"

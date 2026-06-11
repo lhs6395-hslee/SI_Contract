@@ -44,20 +44,20 @@ export function getClient(): { client: ClaudeClient; model: string } {
         || process.env.CLOUD_ML_REGION
         || "us-east5";
       _client = new AnthropicVertex({ projectId, region });
-      _model = process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514";
+      _model = process.env.CLAUDE_MODEL || "claude-opus-4-8-20251101";
       console.log(`[Claude] Vertex AI — project=${projectId}, region=${region}, model=${_model}`);
       break;
     }
     case "bedrock": {
       const region = process.env.AWS_REGION || "ap-northeast-2";
       _client = new AnthropicBedrock({ awsRegion: region });
-      _model = process.env.CLAUDE_MODEL || "us.anthropic.claude-sonnet-4-6-20260217-v1:0";
+      _model = process.env.CLAUDE_MODEL || "us.anthropic.claude-opus-4-8-20251101-v1:0";
       console.log(`[Claude] Bedrock — region=${region}, model=${_model}`);
       break;
     }
     case "direct": {
       _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      _model = process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514";
+      _model = process.env.CLAUDE_MODEL || "claude-opus-4-8-20251101";
       console.log(`[Claude] Direct API — model=${_model}`);
       break;
     }

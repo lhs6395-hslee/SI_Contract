@@ -592,7 +592,7 @@ async def chat(request: StarletteRequest):
     # Bedrock 호출 — 리전/모델ID는 환경변수 통일
     import json as _json
     bedrock_region = os.getenv("AWS_REGION", "ap-northeast-2")
-    bedrock_model = os.getenv("BEDROCK_MODEL_ID", "global.anthropic.claude-sonnet-4-6")
+    bedrock_model = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-opus-4-8-20251101-v1:0")
     try:
         bedrock = boto3.client("bedrock-runtime", region_name=bedrock_region)
         body = _json.dumps({
