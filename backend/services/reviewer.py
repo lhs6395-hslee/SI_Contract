@@ -69,7 +69,8 @@ def _ai_semantic_review(contract: SprintContract, step_results: dict[int, StepRe
 
     try:
         import boto3
-        client = boto3.client("bedrock-runtime", region_name="us-east-1")
+        region = os.getenv("AWS_REGION", "ap-northeast-2")
+        client = boto3.client("bedrock-runtime", region_name=region)
     except Exception:
         return ([], {"input": 0, "output": 0})  # Bedrock 미설정 시 스킵
 
@@ -107,8 +108,9 @@ JSON 배열만 반환하세요."""
             "max_tokens": 256,
             "messages": [{"role": "user", "content": prompt}],
         })
+        model_id = os.getenv("BEDROCK_MODEL_ID", "global.anthropic.claude-sonnet-4-6")
         response = client.invoke_model(
-            modelId="global.anthropic.claude-sonnet-4-6",
+            modelId=model_id,
             contentType="application/json",
             accept="application/json",
             body=body,

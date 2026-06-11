@@ -19,19 +19,31 @@ def _get_client():
 
 def _call_claude(prompt: str, max_tokens: int = 2048) -> str:
     """Bedrock Claude 단일 호출 — JSON 응답 기대."""
+    import logging
+    logger = logging.getLogger("si-contract")
     client = _get_client()
-    response = client.invoke_model(
-        modelId=BEDROCK_MODEL_ID,
-        contentType="application/json",
-        accept="application/json",
-        body=json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": max_tokens,
-            "messages": [{"role": "user", "content": prompt}],
-        }),
-    )
-    result = json.loads(response["body"].read())
-    return result["content"][0]["text"]
+    try:
+        response = client.invoke_model(
+            modelId=BEDROCK_MODEL_ID,
+            contentType="application/json",
+            accept="application/json",
+            body=json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": max_tokens,
+                "messages": [{"role": "user", "content": prompt}],
+            }),
+        )
+        result = json.loads(response["body"].read())
+        return result["content"][0]["text"]
+    except client.exceptions.ThrottlingException:
+        logger.warning("Bedrock throttled — rate limit exceeded")
+        raise RuntimeError("AI 서비스 요청 한도 초과. 잠시 후 다시 시도해 주세요.")
+    except client.exceptions.ModelNotReadyException:
+        logger.warning("Bedrock model not ready: %s", BEDROCK_MODEL_ID)
+        raise RuntimeError("AI 모델이 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.")
+    except Exception as e:
+        logger.error("Bedrock invoke_model failed: %s", e)
+        raise RuntimeError(f"AI 호출 실패: {e}")
 
 
 # ─── 문서 분류 ─────────────────────────────────────────────

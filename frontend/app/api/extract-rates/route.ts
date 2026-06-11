@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { fetchBackend } from "@/lib/fetch-with-retry";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const maxDuration = 120;
-
-const FASTAPI = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://localhost:8001";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,7 +11,6 @@ export async function POST(req: NextRequest) {
     const files = formData.getAll("files") as File[];
     const storedFilesRaw = formData.get("stored_files") as string | null;
 
-    // 백엔드로 프록시
     const proxyForm = new FormData();
     for (const file of files) {
       proxyForm.append("files", file);
@@ -21,15 +19,11 @@ export async function POST(req: NextRequest) {
       proxyForm.append("stored_files", storedFilesRaw);
     }
 
-    const res = await fetch(`${FASTAPI}/api/extract-rates`, {
-      method: "POST",
-      body: proxyForm,
-    });
-
+    const res = await fetchBackend("/api/extract-rates", { method: "POST", body: proxyForm });
     const result = await res.json();
     return NextResponse.json(result, { status: res.status });
   } catch (err) {
     console.error("[extract-rates] proxy error:", err);
-    return NextResponse.json({ rates: null, error: String(err) }, { status: 500 });
+    return NextResponse.json({ rates: null, error: `서버 오류: ${err instanceof Error ? err.message : "unknown"}` }, { status: 500 });
   }
 }

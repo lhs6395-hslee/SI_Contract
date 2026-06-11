@@ -589,24 +589,29 @@ async def chat(request: StarletteRequest):
 
 {f"[현재 프로젝트 데이터]{chr(10)}{context}" if context else "[프로젝트 데이터 없음 — 프로젝트를 선택해 주세요]"}"""
 
-    # Bedrock 호출
+    # Bedrock 호출 — 리전/모델ID는 환경변수 통일
     import json as _json
-    bedrock = boto3.client("bedrock-runtime", region_name="us-east-1")
-    body = _json.dumps({
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 1024,
-        "system": system_prompt,
-        "messages": messages,
-    })
-    response = bedrock.invoke_model(
-        modelId="global.anthropic.claude-sonnet-4-6",
-        contentType="application/json",
-        accept="application/json",
-        body=body,
-    )
-    result = _json.loads(response["body"].read())
+    bedrock_region = os.getenv("AWS_REGION", "ap-northeast-2")
+    bedrock_model = os.getenv("BEDROCK_MODEL_ID", "global.anthropic.claude-sonnet-4-6")
+    try:
+        bedrock = boto3.client("bedrock-runtime", region_name=bedrock_region)
+        body = _json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 1024,
+            "system": system_prompt,
+            "messages": messages,
+        })
+        response = bedrock.invoke_model(
+            modelId=bedrock_model,
+            contentType="application/json",
+            accept="application/json",
+            body=body,
+        )
+        result = _json.loads(response["body"].read())
+    except Exception as e:
+        logger.error("Chat Bedrock error: %s", e)
+        raise HTTPException(502, f"AI 서비스 오류: {e}")
 
-    # 토큰 사용량 추적
     usage = result.get("usage", {})
 
     return {
