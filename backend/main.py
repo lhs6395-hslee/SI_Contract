@@ -362,6 +362,15 @@ async def start_pipeline(request: StarletteRequest):
 
     revision = data.get("revision", 0)
 
+    # 차수 상한: 양식 구조 한계 (공통 차수열 E~P = 0~11차)
+    from services.company_standards import MAX_REVISION
+    if revision > MAX_REVISION:
+        from starlette.responses import JSONResponse
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"수정집행은 최대 {MAX_REVISION}차까지 가능합니다 (요청: {revision}차)."},
+        )
+
     # 이전 차수 데이터 가져오기 (DynamoDB에서)
     prev_revisions = {}
     if revision > 0:
@@ -590,7 +599,7 @@ async def chat(request: StarletteRequest):
         "messages": messages,
     })
     response = bedrock.invoke_model(
-        modelId="us.anthropic.claude-sonnet-4-20250514-v1:0",
+        modelId="global.anthropic.claude-sonnet-4-6",
         contentType="application/json",
         accept="application/json",
         body=body,

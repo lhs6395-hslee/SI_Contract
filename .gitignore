@@ -35,3 +35,12 @@ Thumbs.db
 
 # Docker
 *.log
+
+# 특허 문서
+.patent-link/
+
+# 시나리오 테스트 데이터 (고객 계약 원본)
+senario/
+
+# Excel 임시 파일
+~$*

@@ -89,26 +89,48 @@ class CommonSheetWriter(SheetWriter):
         self.write_cell("M3", cf.client, source="confirmed_fields.client")
         self.write_cell("O3", cf.contractor, source="confirmed_fields.contractor")
 
-        # F4: 매출액 — 천원 단위 (원 단위 → /1000)
-        if cf.revenue:
-            rev_val = cf.revenue
-            if rev_val >= 1_000_000:
-                rev_val = round(rev_val / 1000)
-            self.write_cell("F4", rev_val, source="confirmed_fields.revenue (천원)", calc_basis="원÷1000")
+        # ─── 4행: 견적품의 (매출/재료비/노무비/외주비/경비/영업이익) ───
+        # 견적품의는 최초 1회 — 수정집행(rev>=1)에서는 0차 값을 유지한다 (사용자 결정 2026-06-11)
+        quote_src = cf
+        quote_label = "confirmed_fields"
+        if revision >= 1:
+            rev0 = (getattr(self.contract, 'prev_revisions', None) or {}).get("0", {})
+            rev0_ext = rev0.get("extracted", {})
 
-        # P4: 영업이익 — 천원 단위
-        if cf.profit:
-            profit_val = cf.profit
-            if profit_val >= 100_000:
-                profit_val = round(profit_val / 1000)
-            self.write_cell("P4", profit_val, source="confirmed_fields.profit (천원)", calc_basis="원÷1000")
+            class _Rev0Quote:
+                def _g(self, key):
+                    v = rev0_ext.get(key, {})
+                    return v.get("value") if isinstance(v, dict) else v
+                @property
+                def revenue(self): return self._g("revenue")
+                @property
+                def cost(self): return self._g("cost")
+                @property
+                def profit(self): return self._g("profit")
+                @property
+                def quote_material(self): return self._g("quoteMaterial")
+                @property
+                def quote_labor(self): return self._g("quoteLabor")
+                @property
+                def quote_outsourcing(self): return self._g("quoteOutsourcing")
 
-        # N4: 경비 — 천원 단위
-        if cf.cost:
-            cost_val = cf.cost
-            if cost_val >= 1_000_000:
-                cost_val = round(cost_val / 1000)
-            self.write_cell("N4", cost_val, source="confirmed_fields.cost (천원)", calc_basis="원÷1000")
+            if rev0_ext:
+                quote_src = _Rev0Quote()
+                quote_label = "prev_revisions[0] (견적품의 고정)"
+
+        def _thousand(val, threshold=1_000_000):
+            return round(val / 1000) if val >= threshold else val
+
+        if getattr(quote_src, 'revenue', None):
+            self.write_cell("F4", _thousand(quote_src.revenue), source=f"{quote_label}.revenue (천원)", calc_basis="원÷1000")
+        if getattr(quote_src, 'profit', None):
+            self.write_cell("P4", _thousand(quote_src.profit, 100_000), source=f"{quote_label}.profit (천원)", calc_basis="원÷1000")
+        if getattr(quote_src, 'cost', None):
+            self.write_cell("N4", _thousand(quote_src.cost), source=f"{quote_label}.cost (천원)", calc_basis="원÷1000")
+        for cell_ref, key in (("H4", "quote_material"), ("J4", "quote_labor"), ("L4", "quote_outsourcing")):
+            val = getattr(quote_src, key, None)
+            if val:
+                self.write_cell(cell_ref, _thousand(val), source=f"{quote_label}.{key} (천원)", calc_basis="원÷1000")
 
         self.write_cell("G5", cf.contract_type, source="confirmed_fields.contract_type")
         self.write_cell("I5", cf.payment_terms, source="confirmed_fields.payment_terms")

@@ -33,7 +33,7 @@ variable "aurora_max_capacity_acu" {
 variable "aurora_engine_version" {
   description = "Aurora PostgreSQL engine version"
   type        = string
-  default     = "16.4"
+  default     = "16.11"
 }
 
 variable "dynamodb_billing_mode" {

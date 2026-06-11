@@ -22,7 +22,7 @@ spec:
       serviceAccountName: frontend
       containers:
         - name: frontend
-          image: 264594923212.dkr.ecr.ap-northeast-2.amazonaws.com/si-contract/frontend:v1
+          image: 264594923212.dkr.ecr.ap-northeast-2.amazonaws.com/si-contract/frontend:4909eb5
           ports:
             - containerPort: 3000
               protocol: TCP
@@ -46,11 +46,6 @@ spec:
                 configMapKeyRef:
                   name: app-config
                   key: CLAUDE_MODEL
-            - name: ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: app-secrets
-                  key: ANTHROPIC_API_KEY
           readinessProbe:
             httpGet:
               path: /

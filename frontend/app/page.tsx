@@ -234,6 +234,12 @@ export default function Home() {
             onClose={() => setShowAddRev(false)}
             onAdd={async (reason, revType, files) => {
               const newRev = maxRevision + 1;
+              if (newRev > 11) {
+                // 양식 구조 한계: 공통 차수열 E~P = 0~11차
+                alert("수정집행은 최대 11차까지 가능합니다.");
+                setShowAddRev(false);
+                return;
+              }
               if (extractedData) {
                 const copied: ExtractedData = JSON.parse(JSON.stringify(extractedData));
                 copied.changedFields = {};

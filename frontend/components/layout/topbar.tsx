@@ -107,12 +107,21 @@ export function Topbar({ onAddRevision }: { onAddRevision: () => void }) {
                     </button>
                   ))}
                   <div className="my-1 h-px bg-border" />
-                  <button
-                    className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-[12.5px] text-primary hover:bg-accent"
-                    onClick={() => { setRevOpen(false); onAddRevision(); }}
-                  >
-                    <Plus className="h-3 w-3" /> 수정/이월 추가
-                  </button>
+                  {maxRevision >= 11 ? (
+                    <div
+                      className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-[12.5px] text-muted-foreground cursor-not-allowed"
+                      title="집행계획서 양식의 차수 열이 11차에서 끝납니다"
+                    >
+                      <Plus className="h-3 w-3" /> 수정/이월 추가 (최대 11차)
+                    </div>
+                  ) : (
+                    <button
+                      className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-[12.5px] text-primary hover:bg-accent"
+                      onClick={() => { setRevOpen(false); onAddRevision(); }}
+                    >
+                      <Plus className="h-3 w-3" /> 수정/이월 추가
+                    </button>
+                  )}
                 </div>
               )}
             </div>

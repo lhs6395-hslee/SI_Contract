@@ -1,0 +1,17 @@
+# frontend 빌드 컨텍스트 — backend/infrastructure 제외
+backend/
+infrastructure/
+specs/
+backup/
+.git/
+.gitignore
+.claude/
+scripts/
+senario/
+templates/
+**/__pycache__/
+**/*.pyc
+frontend/node_modules/
+frontend/.next/
+.DS_Store
+**/.DS_Store

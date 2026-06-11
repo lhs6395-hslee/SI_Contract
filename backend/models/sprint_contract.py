@@ -29,6 +29,9 @@ class ConfirmedFields(BaseModel):
     revenue: Optional[int] = None
     cost: Optional[int] = None
     profit: Optional[int] = None
+    quote_material: Optional[int] = None      # 견적품의 재료비 (공통 H4, 원)
+    quote_labor: Optional[int] = None         # 견적품의 노무비 (공통 J4, 원)
+    quote_outsourcing: Optional[int] = None   # 견적품의 외주비 (공통 L4, 원)
     profit_rate: Optional[float] = None
     scope: Optional[str] = None
     special_notes: Optional[str] = None
@@ -68,6 +71,18 @@ class FeeItem(BaseModel):
     current_period_qty: float = 0
     current_period_amount: float = 0
     source_doc: str = ""
+
+
+class BudgetItem(BaseModel):
+    """공통 시트 비목 블록(E23~E124) 입력값 — 비목당 1건 (원 단위)."""
+    category: str  # labor|bonus|wage|welfare|travel|vehicle|equipment|rent|transport|comm|print|safety|etc
+    desc: str = ""  # 산출내역 텍스트 (멀티라인 허용)
+    contract_amount: float = 0
+    execution_amount: float = 0
+    settled_amount: float = 0     # 정산누계(~전년도)
+    current_amount: float = 0     # 당기계획(올해)
+    next1_amount: float = 0       # 당기이후(내년)
+    next2_amount: float = 0       # 당기이후(내후년~)
 
 
 class StaffItem(BaseModel):
@@ -124,11 +139,13 @@ class SprintContract(BaseModel):
     active_items: dict[str, bool] = Field(default_factory=dict)
     conflict_resolutions: list[ConflictResolution] = Field(default_factory=list)
     fee_items: list[FeeItem] = Field(default_factory=list)
+    budget_items: list[BudgetItem] = Field(default_factory=list)
     staff_plan: list[StaffItem] = Field(default_factory=list)
     schedule: list[ScheduleItem] = Field(default_factory=list)
     organization: list[OrgMember] = Field(default_factory=list)
     rates: Optional[RateSet] = None
     prev_revisions: dict[str, dict] = Field(default_factory=dict)  # 이전 차수 데이터 {"0": {...}, ...}
+    prev_fee_items: dict[str, list[FeeItem]] = Field(default_factory=dict)  # 차수별 수수료 항목 (당초 데이터용)
     steps: list[StepDef] = Field(default_factory=list)
     acceptance_criteria: list[str] = Field(default_factory=list)
 

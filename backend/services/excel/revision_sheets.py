@@ -132,6 +132,14 @@ def _patch_sheet_xml(xml_bytes: bytes, revision: int) -> bytes:
             if old_ref in new_formula:
                 new_formula = new_formula.replace(old_ref, new_ref)
 
+        # 원본(0차) 시트 참조 → '(0차)' rename 반영
+        # 예: 갑지(수정집행) F21~F27의 '0. 집행계획(갑지)'!F14~F20 (수주손익)
+        for orig_name in _ORIGINAL_SHEET_NAMES:
+            old_ref = f"'{orig_name}'!"
+            new_ref = f"'{orig_name} (0차)'!"
+            if old_ref in new_formula:
+                new_formula = new_formula.replace(old_ref, new_ref)
+
         if new_formula != f.text:
             f.text = new_formula
             modified = True
