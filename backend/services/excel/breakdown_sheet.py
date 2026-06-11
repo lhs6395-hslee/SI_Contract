@@ -15,8 +15,7 @@
 from .base import SheetWriter
 
 
-def _rev_col(revision: int) -> str:
-    return chr(ord("E") + revision)
+from .utils import rev_col as _rev_col
 
 
 LABOR_SALARY = {"desc": 23, "contract": 24, "execution": 25, "settled": 26, "current": 27, "next1": 28, "next2": 29}

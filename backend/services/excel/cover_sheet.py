@@ -10,8 +10,7 @@ from datetime import datetime
 from .base import SheetWriter
 
 
-def _rev_col(revision: int) -> str:
-    return chr(ord("E") + revision)
+from .utils import rev_col as _rev_col
 
 
 def _to_date(date_str: str):

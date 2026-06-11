@@ -53,8 +53,7 @@ def _cell_str(ws, ref, default=""):
     return str(v)
 
 
-def _rev_col(revision: int) -> str:
-    return chr(ord("E") + revision)
+from services.excel.utils import rev_col as _rev_col
 
 
 def _normalize_for_compare(s: str) -> str:
@@ -70,18 +69,9 @@ def _ai_semantic_review(contract: SprintContract, step_results: dict[int, StepRe
 
     정보 장벽: confirmed_fields + fee_items + inputs_used만 전달.
     Executor의 reasoning/notes는 전달하지 않음.
-
-    Returns: (issues, token_usage)
     """
-    import os
     import json
-
-    try:
-        import boto3
-        region = os.getenv("AWS_REGION", "ap-northeast-2")
-        client = boto3.client("bedrock-runtime", region_name=region)
-    except Exception:
-        return ([], {"input": 0, "output": 0})  # Bedrock 미설정 시 스킵
+    from services.claude_api import invoke_bedrock
 
     cf = contract.confirmed_fields
     inputs_summary = []
@@ -112,31 +102,16 @@ def _ai_semantic_review(contract: SprintContract, step_results: dict[int, StepRe
 JSON 배열만 반환하세요."""
 
     try:
-        body = json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 256,
-            "messages": [{"role": "user", "content": prompt}],
-        })
-        model_id = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-opus-4-8-20251101-v1:0")
-        response = client.invoke_model(
-            modelId=model_id,
-            contentType="application/json",
-            accept="application/json",
-            body=body,
-        )
-        result = json.loads(response["body"].read())
+        result = invoke_bedrock(prompt, max_tokens=256)
         text = result["content"][0]["text"].strip()
         usage = result.get("usage", {})
         token_info = {"input": usage.get("input_tokens", 0), "output": usage.get("output_tokens", 0)}
-        # JSON 배열 파싱
         if text.startswith("["):
             issues = json.loads(text)
             return ([f"[AI검증] {i}" for i in issues if isinstance(i, str)], token_info)
         return ([], token_info)
     except Exception:
-        pass
-
-    return ([], {"input": 0, "output": 0})
+        return ([], {"input": 0, "output": 0})
 
 
 def _verify_fee_structure(wb: openpyxl.Workbook, contract: SprintContract) -> dict:

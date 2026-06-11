@@ -1,49 +1,65 @@
-"""Claude API 호출 — 문서 분류 / 필드 추출 / 교차 검증"""
+"""Claude API 호출 — 문서 분류 / 필드 추출 / 교차 검증 + 공용 Bedrock 클라이언트"""
 
 import os
 import json
+import logging
 import boto3
+from botocore.config import Config
 
 _client = None
+_logger = logging.getLogger("si-contract")
 
 BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-opus-4-8-20251101-v1:0")
 BEDROCK_REGION = os.getenv("AWS_REGION", "ap-northeast-2")
 
+_BEDROCK_CONFIG = Config(
+    retries={"max_attempts": 3, "mode": "adaptive"},
+    connect_timeout=10,
+    read_timeout=60,
+)
 
-def _get_client():
+
+def get_bedrock_client():
+    """싱글톤 Bedrock 클라이언트 — main.py, reviewer.py에서도 사용."""
     global _client
     if _client is None:
-        _client = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
+        _client = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION, config=_BEDROCK_CONFIG)
     return _client
 
 
-def _call_claude(prompt: str, max_tokens: int = 2048) -> str:
-    """Bedrock Claude 단일 호출 — JSON 응답 기대."""
-    import logging
-    logger = logging.getLogger("si-contract")
-    client = _get_client()
+def invoke_bedrock(prompt: str, max_tokens: int = 2048, system: str | None = None) -> dict:
+    """공용 Bedrock invoke_model — 결과 dict 반환. main.py/reviewer.py에서 재사용."""
+    client = get_bedrock_client()
+    body_dict = {
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if system:
+        body_dict["system"] = system
     try:
         response = client.invoke_model(
             modelId=BEDROCK_MODEL_ID,
             contentType="application/json",
             accept="application/json",
-            body=json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": max_tokens,
-                "messages": [{"role": "user", "content": prompt}],
-            }),
+            body=json.dumps(body_dict),
         )
-        result = json.loads(response["body"].read())
-        return result["content"][0]["text"]
+        return json.loads(response["body"].read())
     except client.exceptions.ThrottlingException:
-        logger.warning("Bedrock throttled — rate limit exceeded")
+        _logger.warning("Bedrock throttled — rate limit exceeded")
         raise RuntimeError("AI 서비스 요청 한도 초과. 잠시 후 다시 시도해 주세요.")
     except client.exceptions.ModelNotReadyException:
-        logger.warning("Bedrock model not ready: %s", BEDROCK_MODEL_ID)
+        _logger.warning("Bedrock model not ready: %s", BEDROCK_MODEL_ID)
         raise RuntimeError("AI 모델이 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.")
     except Exception as e:
-        logger.error("Bedrock invoke_model failed: %s", e)
+        _logger.error("Bedrock invoke_model failed: %s", e)
         raise RuntimeError(f"AI 호출 실패: {e}")
+
+
+def _call_claude(prompt: str, max_tokens: int = 2048) -> str:
+    """Bedrock Claude 단일 호출 — JSON 응답 기대."""
+    result = invoke_bedrock(prompt, max_tokens)
+    return result["content"][0]["text"]
 
 
 # ─── 문서 분류 ─────────────────────────────────────────────

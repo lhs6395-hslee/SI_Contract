@@ -131,11 +131,20 @@ async def run_pipeline(
                     return state
                 state.retry_count[result.step_id] = retry + 1
 
+    # Reviewer — 독립 5단계 검증 (정보 장벽 유지)
+    from services.reviewer import run_review
+    try:
+        review_result, token_usage = run_review(contract, state.step_results, wb)
+        state.review_results = [review_result]
+        state.token_usage = token_usage
+    except Exception as e:
+        import logging
+        logging.getLogger("si-contract").warning("Review failed (non-blocking): %s", e)
+
     output_filename = f"{project_id}_집행계획서.xlsx"
     output_path = RESULTS_DIR / output_filename
     wb.save(str(output_path))
 
-    # S3에 업로드 (Pod 재시작 시에도 다운로드 가능)
     from services.s3_storage import is_s3_enabled, _s3_client, S3_FILES_BUCKET
     s3_key = f"results/{output_filename}"
     if is_s3_enabled():
@@ -143,25 +152,12 @@ async def run_pipeline(
             s3 = _s3_client()
             s3.upload_file(str(output_path), S3_FILES_BUCKET, s3_key)
         except Exception as e:
-            print(f"[WARN] S3 upload failed: {e}")
+            import logging
+            logging.getLogger("si-contract").warning("S3 upload failed: %s", e)
 
     state.status = PipelineStatus.completed
-    state.output_file = s3_key  # S3 키 저장 (로컬 경로 대신)
+    state.output_file = s3_key
     return state
-
-
-def _identify_failed_sheets(issues: list[str]) -> set[str]:
-    sheet_keywords = {
-        "5-4. 수수료산출내역": ["행", "계약:", "집행:", "역마진", "연도분리", "당기수량"],
-        "공통": ["노무비", "보험료", "project_name", "client", "pm", "매출액", "영업이익"],
-        "5.집행예산산출내역서": ["수수료 교차", "비활성 비목"],
-    }
-    failed = set()
-    for issue in issues:
-        for sheet, keywords in sheet_keywords.items():
-            if any(kw in issue for kw in keywords):
-                failed.add(sheet)
-    return failed if failed else {"공통"}
 
 
 def run_pipeline_sync(project_id: str, contract: SprintContract) -> PipelineState:

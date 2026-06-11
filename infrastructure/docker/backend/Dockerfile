@@ -1,4 +1,4 @@
-FROM python:3.11-slim AS base
+FROM python:3.12-slim AS base
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -13,7 +13,7 @@ COPY backend/requirements.txt .
 RUN pip install --upgrade pip --no-cache-dir && \
     pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-FROM python:3.11-slim AS runner
+FROM python:3.12-slim AS runner
 WORKDIR /app
 
 RUN apt-get update && \

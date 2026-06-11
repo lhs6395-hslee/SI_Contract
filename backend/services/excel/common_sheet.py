@@ -63,9 +63,7 @@ def _calc_period_ratios(start_str: str, end_str: str, fiscal_year: int) -> dict:
     }
 
 
-def _rev_col(revision: int) -> str:
-    """차수 번호(0~11) → 열 문자(E~P)."""
-    return chr(ord("E") + revision)
+from services.excel.utils import rev_col as _rev_col
 
 
 class CommonSheetWriter(SheetWriter):
