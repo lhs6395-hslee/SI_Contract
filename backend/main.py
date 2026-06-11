@@ -687,12 +687,21 @@ async def auth_login(data: dict):
 
 @app.get("/api/auth/me")
 async def auth_me(request: StarletteRequest):
-    """현재 인증된 사용자 정보."""
+    """현재 인증된 사용자 정보. Cognito JWT 우선 → Basic Auth fallback."""
     auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
-        username = _verify_basic_token(token)
-        if username:
-            return {"email": username, "role": "admin", "provider": "basic"}
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(401, "Not authenticated")
 
-    raise HTTPException(401, "Not authenticated")
+    token = auth_header[7:]
+
+    from services.cognito_auth import verify_cognito_token
+    payload = verify_cognito_token(token)
+    if payload:
+        email = payload.get("email", payload.get("cognito:username", ""))
+        return {"email": email, "role": "admin", "provider": "cognito"}
+
+    username = _verify_basic_token(token)
+    if username:
+        return {"email": username, "role": "admin", "provider": "basic"}
+
+    raise HTTPException(401, "Invalid token")
