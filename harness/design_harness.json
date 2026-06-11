@@ -1,0 +1,121 @@
+{
+  "version": "1.0",
+  "description": "UI 디자인 하네스 — 2026 기준 (모바일퍼스트, WCAG 2.2 AA)",
+
+  "color_tokens": {
+    "note": "shadcn/ui oklch 기반. globals.css :root / .dark에서 관리",
+    "semantic": {
+      "primary": "oklch(0.205 0 0)",
+      "primary-foreground": "oklch(0.985 0 0)",
+      "destructive": "oklch(0.577 0.245 27.325)",
+      "muted-foreground": "oklch(0.556 0 0)",
+      "border": "oklch(0.922 0 0)"
+    },
+    "status": {
+      "in-progress": "bg-blue-500",
+      "done": "bg-emerald-500",
+      "locked": "bg-amber-500",
+      "urgent": "bg-red-500"
+    }
+  },
+
+  "typography": {
+    "font_family": "Geist Sans (--font-geist-sans)",
+    "font_mono": "Geist Mono (--font-geist-mono)",
+    "scale": {
+      "xs": "text-xs (12px)",
+      "sm": "text-sm (14px)",
+      "base": "text-base (16px) — 본문 최소",
+      "lg": "text-lg (18px)",
+      "xl": "text-xl (20px)",
+      "2xl": "text-2xl (24px) — 통계 숫자"
+    },
+    "rules": {
+      "min_body_size": "14px (text-sm) — WCAG 2.2 AA 권고",
+      "min_touch_label": "12px (text-xs) — 보조 라벨 한계",
+      "no_below_10px": "text-[10px] 이하 금지 (접근성 위반)"
+    }
+  },
+
+  "spacing": {
+    "page_padding": "p-4 md:p-6",
+    "card_padding": "p-4 md:p-5",
+    "section_gap": "space-y-4",
+    "inline_gap": "gap-2 md:gap-3",
+    "modal_margin": "mx-4 (모바일 여백 보장)"
+  },
+
+  "border_radius": {
+    "base": "0.625rem (--radius)",
+    "button": "rounded-md",
+    "card": "rounded-lg",
+    "modal": "rounded-xl",
+    "pill": "rounded-full"
+  },
+
+  "touch_targets": {
+    "min_size": "44px × 44px (WCAG 2.5.8 AA)",
+    "icon_button": "h-10 w-10 (40px) — 최소. h-8 w-8(32px) 금지",
+    "list_item": "py-2.5 (최소 40px row height)",
+    "mobile_tap": "min-h-[44px] 보장"
+  },
+
+  "responsive": {
+    "breakpoints": {
+      "sm": "640px",
+      "md": "768px — 사이드바 전환점",
+      "lg": "1024px",
+      "xl": "1280px"
+    },
+    "patterns": {
+      "sidebar": "hidden md:flex (모바일: 드로어)",
+      "search": "hidden md:block",
+      "grid_stats": "grid-cols-1 sm:2 md:3 lg:5",
+      "grid_2col": "grid-cols-1 md:grid-cols-2",
+      "chat_panel": "fixed inset-4 md:inset-auto md:w-96 md:h-[500px]"
+    }
+  },
+
+  "accessibility": {
+    "standard": "WCAG 2.2 AA",
+    "contrast_ratio": "4.5:1 (normal text), 3:1 (large text)",
+    "focus_visible": "outline-ring/50 (globals.css에서 적용)",
+    "aria": {
+      "interactive_elements": "role, aria-label 필수",
+      "modals": "role=dialog, aria-modal=true",
+      "status_indicators": "aria-live=polite"
+    },
+    "keyboard": {
+      "tab_order": "논리적 순서 보장",
+      "escape": "모달/드롭다운 닫기",
+      "enter": "기본 액션 실행"
+    }
+  },
+
+  "known_violations": [
+    {
+      "component": "sidebar.tsx",
+      "issue": "프로젝트 목록 text-[13px] — min 14px 미달",
+      "severity": "LOW",
+      "fix": "text-sm (14px)로 교체"
+    },
+    {
+      "component": "topbar.tsx",
+      "issue": "테마 토글 h-8 w-8 (32px) — min 40px 미달",
+      "severity": "MEDIUM",
+      "fix": "h-10 w-10으로 교체"
+    },
+    {
+      "component": "review-page.tsx",
+      "issue": "수정 뱃지 text-[10px] — 접근성 한계",
+      "severity": "LOW",
+      "fix": "text-xs (12px)로 교체, 패딩 축소로 공간 보전"
+    },
+    {
+      "component": "chat-panel.tsx",
+      "issue": "토큰 사용량 text-[9px] — 10px 미만 금지",
+      "severity": "MEDIUM",
+      "fix": "text-[10px] 또는 제거"
+    }
+  ]
+}

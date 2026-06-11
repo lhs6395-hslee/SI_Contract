@@ -137,7 +137,7 @@ export function Topbar({ onAddRevision }: { onAddRevision: () => void }) {
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8"
+          className="h-10 w-10"
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
         >
           {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -146,7 +146,7 @@ export function Topbar({ onAddRevision }: { onAddRevision: () => void }) {
         <div className="relative" ref={profileRef}>
           <button
             onClick={() => setProfileOpen((v) => !v)}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold hover:opacity-80 transition-opacity"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold hover:opacity-80 transition-opacity"
           >
             {initial}
           </button>

@@ -114,7 +114,7 @@ export function Sidebar() {
               key={p.id}
               role="button"
               tabIndex={0}
-              className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] transition-colors hover:bg-accent cursor-pointer ${active ? "bg-accent font-medium" : ""}`}
+              className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors hover:bg-accent cursor-pointer ${active ? "bg-accent font-medium" : ""}`}
               onMouseEnter={() => setHoveredId(p.id)}
               onMouseLeave={() => setHoveredId(null)}
               onClick={() => { setProjectId(p.id); setIsNewProject(false); setRoute("review"); closeMobile(); }}
@@ -153,13 +153,13 @@ export function Sidebar() {
       {/* Navigation */}
       <div className="border-t border-border px-2 pt-2 pb-1 space-y-0.5">
         <button
-          className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] hover:bg-accent ${route === "projects" ? "bg-accent font-medium" : ""}`}
+          className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm hover:bg-accent ${route === "projects" ? "bg-accent font-medium" : ""}`}
           onClick={() => navigate("projects")}
         >
           <FolderOpen className="h-3.5 w-3.5" /> 프로젝트 목록
         </button>
         <button
-          className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] hover:bg-accent ${route === "notifications" ? "bg-accent font-medium" : ""}`}
+          className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm hover:bg-accent ${route === "notifications" ? "bg-accent font-medium" : ""}`}
           onClick={() => navigate("notifications")}
         >
           <Bell className="h-3.5 w-3.5" /> 알림
@@ -169,13 +169,13 @@ export function Sidebar() {
       {/* Settings */}
       <div className="border-t border-border px-2 pb-2 pt-1">
         <button
-          className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] hover:bg-accent ${route === "settings" ? "bg-accent font-medium" : ""}`}
+          className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm hover:bg-accent ${route === "settings" ? "bg-accent font-medium" : ""}`}
           onClick={() => navigate("settings")}
         >
           <Settings className="h-3.5 w-3.5" /> 설정
         </button>
         <button
-          className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] hover:bg-accent text-muted-foreground"
+          className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm hover:bg-accent text-muted-foreground"
           onClick={() => { localStorage.removeItem("si_auth_token"); localStorage.removeItem("si_auth_user"); window.location.href = "/login"; }}
         >
           <LogOut className="h-3.5 w-3.5" /> 로그아웃

@@ -118,7 +118,7 @@ export function ChatPanel() {
             }`}>
               {msg.content}
               {msg.usage && (
-                <div className="text-[9px] text-muted-foreground mt-1 opacity-60">
+                <div className="text-[10px] text-muted-foreground mt-1 opacity-60">
                   {msg.usage.input_tokens + msg.usage.output_tokens} tokens
                 </div>
               )}
