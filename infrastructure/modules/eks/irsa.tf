@@ -132,7 +132,10 @@ resource "aws_iam_role_policy" "backend_bedrock" {
           "bedrock:InvokeModel",
           "bedrock:InvokeModelWithResponseStream",
         ]
-        Resource = "arn:${data.aws_partition.current.partition}:bedrock:${data.aws_region.current.name}::foundation-model/*"
+        Resource = [
+          "arn:${data.aws_partition.current.partition}:bedrock:*::foundation-model/*",
+          "arn:${data.aws_partition.current.partition}:bedrock:*:${data.aws_caller_identity.current.account_id}:inference-profile/*",
+        ]
       }
     ]
   })
@@ -180,7 +183,10 @@ resource "aws_iam_role_policy" "frontend_bedrock" {
           "bedrock:InvokeModel",
           "bedrock:InvokeModelWithResponseStream",
         ]
-        Resource = "arn:${data.aws_partition.current.partition}:bedrock:${data.aws_region.current.name}::foundation-model/*"
+        Resource = [
+          "arn:${data.aws_partition.current.partition}:bedrock:*::foundation-model/*",
+          "arn:${data.aws_partition.current.partition}:bedrock:*:${data.aws_caller_identity.current.account_id}:inference-profile/*",
+        ]
       }
     ]
   })
@@ -291,6 +297,7 @@ resource "aws_iam_role_policy" "aws_lb_controller" {
           "elasticloadbalancing:DescribeTargetGroupAttributes",
           "elasticloadbalancing:DescribeTargetHealth",
           "elasticloadbalancing:DescribeListeners",
+          "elasticloadbalancing:DescribeListenerAttributes",
           "elasticloadbalancing:DescribeListenerCertificates",
           "elasticloadbalancing:DescribeRules",
           "elasticloadbalancing:DescribeTags",

@@ -108,7 +108,7 @@ JSON 배열만 반환하세요."""
             "messages": [{"role": "user", "content": prompt}],
         })
         response = client.invoke_model(
-            modelId="us.anthropic.claude-sonnet-4-20250514-v1:0",
+            modelId="global.anthropic.claude-sonnet-4-6",
             contentType="application/json",
             accept="application/json",
             body=body,

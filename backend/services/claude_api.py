@@ -2,27 +2,36 @@
 
 import os
 import json
-import anthropic
+import boto3
 
 _client = None
 
+BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "global.anthropic.claude-sonnet-4-6")
+BEDROCK_REGION = os.getenv("AWS_REGION", "ap-northeast-2")
 
-def _get_client() -> anthropic.Anthropic:
+
+def _get_client():
     global _client
     if _client is None:
-        _client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        _client = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
     return _client
 
 
 def _call_claude(prompt: str, max_tokens: int = 2048) -> str:
-    """Claude API 단일 호출 — JSON 응답 기대."""
+    """Bedrock Claude 단일 호출 — JSON 응답 기대."""
     client = _get_client()
-    msg = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
+    response = client.invoke_model(
+        modelId=BEDROCK_MODEL_ID,
+        contentType="application/json",
+        accept="application/json",
+        body=json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        }),
     )
-    return msg.content[0].text
+    result = json.loads(response["body"].read())
+    return result["content"][0]["text"]
 
 
 # ─── 문서 분류 ─────────────────────────────────────────────

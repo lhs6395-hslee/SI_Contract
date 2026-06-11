@@ -1,0 +1,22 @@
+# CoreDNS Fargate Toleration Patch
+# Apply with: kubectl patch deployment coredns -n kube-system --patch-file coredns-fargate-patch.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coredns
+  namespace: kube-system
+spec:
+  template:
+    metadata:
+      annotations:
+        eks.amazonaws.com/compute-type: fargate
+    spec:
+      tolerations:
+        - key: "eks.amazonaws.com/compute-type"
+          operator: "Equal"
+          value: "fargate"
+          effect: "NoSchedule"
+        - key: "node.kubernetes.io/not-ready"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 300

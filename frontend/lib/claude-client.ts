@@ -49,9 +49,9 @@ export function getClient(): { client: ClaudeClient; model: string } {
       break;
     }
     case "bedrock": {
-      const region = process.env.AWS_REGION || "us-east-1";
+      const region = process.env.AWS_REGION || "ap-northeast-2";
       _client = new AnthropicBedrock({ awsRegion: region });
-      _model = process.env.CLAUDE_MODEL || "anthropic.claude-sonnet-4-20250514-v1:0";
+      _model = process.env.CLAUDE_MODEL || "us.anthropic.claude-sonnet-4-6-20260217-v1:0";
       console.log(`[Claude] Bedrock — region=${region}, model=${_model}`);
       break;
     }
