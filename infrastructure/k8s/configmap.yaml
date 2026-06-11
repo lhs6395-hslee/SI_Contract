@@ -12,7 +12,6 @@ data:
   CLAUDE_MODEL: "us.anthropic.claude-sonnet-4-6-20250514-v1:0"
   DEFAULT_MODEL: "us.anthropic.claude-sonnet-4-6-20250514-v1:0"
   HAIKU_MODEL: "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-  DAILY_TOKEN_LIMIT: "100000"
   S3_FILES_BUCKET: "si-contract-dev-files"
   S3_TEMPLATES_BUCKET: "si-contract-dev-templates"
   DYNAMODB_TABLE: "si-contract-dev-projects"

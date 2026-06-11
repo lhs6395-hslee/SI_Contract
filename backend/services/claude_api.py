@@ -35,8 +35,8 @@ def invoke_bedrock(
     task_type: str = "sonnet",
     user_id: str = "default",
 ) -> dict:
-    """공용 Bedrock invoke — LLM Gateway 통과 (모델 라우팅 + 토큰 제한)."""
-    from services.llm_gateway import route_model, check_and_record_tokens, reset_at
+    """공용 Bedrock invoke — LLM Gateway 통과 (모델 라우팅)."""
+    from services.llm_gateway import route_model
 
     if not model_id:
         model_id = route_model(task_type, user_id)
@@ -59,16 +59,9 @@ def invoke_bedrock(
         result = json.loads(response["body"].read())
 
         usage = result.get("usage", {})
-        in_tok = usage.get("input_tokens", 0)
-        out_tok = usage.get("output_tokens", 0)
-        if not check_and_record_tokens(user_id, in_tok, out_tok):
-            raise RuntimeError(f"token_limit_exceeded|{reset_at()}")
-
         _logger.info("Bedrock call: model=%s task=%s tokens=%d+%d user=%s",
-                      model_id, task_type, in_tok, out_tok, user_id)
+                      model_id, task_type, usage.get("input_tokens", 0), usage.get("output_tokens", 0), user_id)
         return result
-    except RuntimeError:
-        raise
     except client.exceptions.ThrottlingException:
         _logger.warning("Bedrock throttled — rate limit exceeded")
         raise RuntimeError("AI 서비스 요청 한도 초과. 잠시 후 다시 시도해 주세요.")
