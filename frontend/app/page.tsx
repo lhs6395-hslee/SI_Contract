@@ -22,6 +22,8 @@ import {
 } from "@/components/pages/other-pages";
 import { SettingsPage } from "@/components/pages/settings-page";
 import { ChatPanel } from "@/components/chat/chat-panel";
+import { useToast } from "@/components/ui/toast";
+import { ReviewSkeleton } from "@/components/ui/skeleton";
 
 export default function Home() {
   const router = useRouter();
@@ -36,6 +38,7 @@ export default function Home() {
   const [conflictCount, setConflictCount] = useState(0);
   const [showAddRev, setShowAddRev] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const { toast } = useToast();
 
   // ref로 최신 값 추적 (useCallback 의존성 없이 접근)
   const projectIdRef = useRef(projectId);
@@ -182,6 +185,7 @@ export default function Home() {
       setExtractedData(cleanData);
       setConflictCount(cleanData.conflicts?.length || 0);
     }
+    toast("success", "프로젝트가 생성되었습니다");
     setRoute("review");
   }, []);
 
@@ -189,12 +193,13 @@ export default function Home() {
   const deleteProject = useCallback((id: string) => {
     deleteProjectAsync(id);
     setProjects((ps) => ps.filter((p) => p.id !== id));
+    toast("success", "프로젝트가 삭제되었습니다");
     if (projectIdRef.current === id) {
       setRoute("upload");
       setIsNewProject(true);
       setExtractedData(null);
     }
-  }, []);
+  }, [toast]);
 
   const ctx = {
     route, setRoute,
@@ -221,7 +226,7 @@ export default function Home() {
           <Topbar onAddRevision={() => setShowAddRev(true)} />
           <main className="flex-1 overflow-y-auto p-4 md:p-6">
             {route === "upload" && <UploadPage onComplete={completeNewProject} />}
-            {route === "review" && <ReviewPage />}
+            {route === "review" && (extractedData ? <ReviewPage /> : <ReviewSkeleton />)}
             {route === "conflicts" && <ConflictsPage />}
             {route === "export" && <ExportPage />}
             {route === "projects" && <ProjectsPage />}

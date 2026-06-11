@@ -86,7 +86,7 @@ export function ChatPanel() {
         <div className="flex items-center gap-2">
           <MessageCircle className="h-4 w-4 text-primary" />
           <span className="text-sm font-semibold">AI 어시스턴트</span>
-          <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Opus</span>
+          <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Haiku</span>
         </div>
         <button onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground">
           <X className="h-4 w-4" />
@@ -127,8 +127,13 @@ export function ChatPanel() {
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className="bg-muted rounded-lg px-3 py-2">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            <div className="bg-muted rounded-lg px-3 py-2 flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">AI가 분석 중입니다</span>
+              <span className="flex gap-0.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "300ms" }} />
+              </span>
             </div>
           </div>
         )}
