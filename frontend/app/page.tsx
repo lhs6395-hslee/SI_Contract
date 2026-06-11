@@ -7,7 +7,7 @@ import { isAuthenticated } from "@/lib/auth";
 import type { Project, Route, ExtractedData } from "@/lib/types";
 import { apiUploadFiles } from "@/lib/api";
 import {
-  loadProjects, saveProject, deleteProjectFromStorage,
+  loadProjects, saveProject, deleteProjectFromStorage, deleteProjectAsync,
   loadProjectData, toProject,
   loadProjectsAsync, saveProjectAsync, loadProjectDataAsync,
   type ProjectData,
@@ -187,7 +187,7 @@ export default function Home() {
 
   // ─── 프로젝트 삭제 ───
   const deleteProject = useCallback((id: string) => {
-    deleteProjectFromStorage(id);
+    deleteProjectAsync(id);
     setProjects((ps) => ps.filter((p) => p.id !== id));
     if (projectIdRef.current === id) {
       setRoute("upload");
