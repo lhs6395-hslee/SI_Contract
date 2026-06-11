@@ -49,6 +49,9 @@ logger = logging.getLogger("si-contract")
 
 app = FastAPI(title="SI 집행계획서 API", version="0.1.0")
 
+from telemetry import init_telemetry
+init_telemetry(app)
+
 # Request ID 미들웨어
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest

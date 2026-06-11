@@ -15,4 +15,7 @@ data:
   DYNAMODB_TABLE: "si-contract-dev-projects"
   DYNAMODB_PIPELINE_TABLE: "si-contract-dev-pipeline-state"
   AWS_SECRET_NAME: "si-contract-dev/app-secrets"
+  OTEL_ENABLED: "false"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4317"
+  OTEL_SERVICE_NAME: "si-contract-backend"
   NEXT_PUBLIC_APP_URL: "https://si.rayhli.com"
