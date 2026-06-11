@@ -1,0 +1,81 @@
+{
+  "version": "1.0",
+  "description": "셀 매핑 — reviewer.py/sheet writer의 매직넘버 외부화. 변경 시 change_manifest.jsonl에 기록 필수.",
+
+  "revision_col": {
+    "base": "E",
+    "formula": "chr(ord('E') + revision)",
+    "max_revision": 11,
+    "note": "E=0차, F=1차, ..., P=11차"
+  },
+
+  "fee_sheet": {
+    "name": "5-4. 수수료산출내역",
+    "data_start_row": 8,
+    "data_end_row": 16,
+    "total_row": 17,
+    "columns": {
+      "contract_qty": "H",
+      "contract_unit_price": "I",
+      "contract_amount": "J",
+      "execution_qty": "K",
+      "execution_unit_price": "L",
+      "execution_amount": "M",
+      "current_period_qty": "Q",
+      "current_period_unit_price": "R"
+    }
+  },
+
+  "common_sheet": {
+    "name": "공통",
+    "basic_info": {
+      "project_name": "E3",
+      "client": "M3",
+      "contractor": "O3",
+      "project_code": "K3",
+      "contract_type": "G5",
+      "sales_owner": "O5",
+      "revenue": "F4",
+      "profit": "P4",
+      "pm": "{rev_col}12",
+      "written_date": "{rev_col}9",
+      "period_start": "{rev_col}125",
+      "period_end": "{rev_col}126"
+    },
+    "labor": {
+      "salary_row": 25,
+      "bonus_row": 31,
+      "wage_row": 38,
+      "note": "급료(직원)=25, 상여금=31, 임금(현장사원)=38"
+    },
+    "insurance_rates": {
+      "national_pension_row": 19,
+      "health_insurance_row": 20,
+      "industrial_accident_row": 21,
+      "employment_insurance_row": 22
+    },
+    "inactive_items": {
+      "material_cost_row": 110
+    }
+  },
+
+  "cover_sheet": {
+    "name": "0. 집행계획(갑지)",
+    "note": "갑지 셀은 모두 수식 — 공통 시트 원본값으로 검증"
+  },
+
+  "breakdown_sheet": {
+    "name": "5.집행예산산출내역서",
+    "note": "수식 체인 (공통→집계표→산출내역서) — data_only=False에서 값 없음"
+  },
+
+  "sheets": [
+    "공통",
+    "5-4. 수수료산출내역",
+    "5.집행예산산출내역서",
+    "0. 집행계획(갑지)",
+    "인원투입계획",
+    "1. 현장조직_업무분장",
+    "3. 예정공정표"
+  ]
+}

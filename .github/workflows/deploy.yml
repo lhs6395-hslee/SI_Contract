@@ -1,0 +1,230 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "backend/**"
+      - "infrastructure/**"
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+  K8S_NAMESPACE: si-contract
+  IMAGE_TAG: ${{ github.sha }}
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Detect which components changed
+  # ---------------------------------------------------------------------------
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+              - 'infrastructure/docker/frontend/**'
+            backend:
+              - 'backend/**'
+              - 'templates/**'
+              - 'infrastructure/docker/backend/**'
+
+  # ---------------------------------------------------------------------------
+  # Build & Push to ECR
+  # ---------------------------------------------------------------------------
+  build-backend:
+    name: Build Backend Image
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infrastructure/docker/backend/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/si-contract/backend:${{ env.IMAGE_TAG }}
+            ${{ env.ECR_REGISTRY }}/si-contract/backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-frontend:
+    name: Build Frontend Image
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infrastructure/docker/frontend/Dockerfile
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            NEXT_PUBLIC_FASTAPI_URL=https://si-api.rayhli.com
+          tags: |
+            ${{ env.ECR_REGISTRY }}/si-contract/frontend:${{ env.IMAGE_TAG }}
+            ${{ env.ECR_REGISTRY }}/si-contract/frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------------------
+  # Deploy to Dev (automatic)
+  # ---------------------------------------------------------------------------
+  deploy-dev:
+    name: Deploy to Dev
+    needs: [changes, build-backend, build-frontend]
+    if: |
+      always() &&
+      !contains(needs.*.result, 'failure') &&
+      (needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true')
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: |
+          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > /tmp/kubeconfig
+          echo "KUBECONFIG=/tmp/kubeconfig" >> $GITHUB_ENV
+
+      - name: Deploy backend
+        if: needs.changes.outputs.backend == 'true'
+        run: |
+          kubectl set image deployment/backend \
+            backend=${{ env.ECR_REGISTRY }}/si-contract/backend:${{ env.IMAGE_TAG }} \
+            -n ${{ env.K8S_NAMESPACE }}
+          kubectl rollout status deployment/backend \
+            -n ${{ env.K8S_NAMESPACE }} --timeout=180s
+
+      - name: Deploy frontend
+        if: needs.changes.outputs.frontend == 'true'
+        run: |
+          kubectl set image deployment/frontend \
+            frontend=${{ env.ECR_REGISTRY }}/si-contract/frontend:${{ env.IMAGE_TAG }} \
+            -n ${{ env.K8S_NAMESPACE }}
+          kubectl rollout status deployment/frontend \
+            -n ${{ env.K8S_NAMESPACE }} --timeout=180s
+
+      - name: Update K8s manifests with new image tag
+        run: |
+          SHORT_SHA=$(echo "${{ env.IMAGE_TAG }}" | cut -c1-7)
+
+          if [ "${{ needs.changes.outputs.backend }}" == "true" ]; then
+            sed -i "s|si-contract/backend:[a-zA-Z0-9._-]*|si-contract/backend:${SHORT_SHA}|" \
+              infrastructure/k8s/backend/deployment.yaml
+          fi
+
+          if [ "${{ needs.changes.outputs.frontend }}" == "true" ]; then
+            sed -i "s|si-contract/frontend:[a-zA-Z0-9._-]*|si-contract/frontend:${SHORT_SHA}|" \
+              infrastructure/k8s/frontend/deployment.yaml
+          fi
+
+      - name: Commit manifest updates
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update k8s image tags to ${{ env.IMAGE_TAG }}"
+          file_pattern: "infrastructure/k8s/*/deployment.yaml"
+          branch: main
+
+      - name: Cleanup kubeconfig
+        if: always()
+        run: rm -f /tmp/kubeconfig
+
+  # ---------------------------------------------------------------------------
+  # Deploy to Production (manual approval required)
+  # ---------------------------------------------------------------------------
+  deploy-prod:
+    name: Deploy to Production
+    needs: [changes, deploy-dev]
+    if: |
+      always() &&
+      needs.deploy-dev.result == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: |
+          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > /tmp/kubeconfig
+          echo "KUBECONFIG=/tmp/kubeconfig" >> $GITHUB_ENV
+
+      - name: Deploy backend
+        if: needs.changes.outputs.backend == 'true'
+        run: |
+          kubectl set image deployment/backend \
+            backend=${{ env.ECR_REGISTRY }}/si-contract/backend:${{ env.IMAGE_TAG }} \
+            -n ${{ env.K8S_NAMESPACE }}
+          kubectl rollout status deployment/backend \
+            -n ${{ env.K8S_NAMESPACE }} --timeout=300s
+
+      - name: Deploy frontend
+        if: needs.changes.outputs.frontend == 'true'
+        run: |
+          kubectl set image deployment/frontend \
+            frontend=${{ env.ECR_REGISTRY }}/si-contract/frontend:${{ env.IMAGE_TAG }} \
+            -n ${{ env.K8S_NAMESPACE }}
+          kubectl rollout status deployment/frontend \
+            -n ${{ env.K8S_NAMESPACE }} --timeout=300s
+
+      - name: Cleanup kubeconfig
+        if: always()
+        run: rm -f /tmp/kubeconfig

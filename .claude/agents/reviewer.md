@@ -5,6 +5,17 @@ description: Executor의 결과물을 독립적으로 검증하는 에이전트.
 
 # Reviewer — 독립 검증 (금액 검증 특화)
 
+## AHE 하네스 참조 (CRITICAL)
+
+검증 규칙과 셀 매핑은 하네스 JSON에서 로드한다. Python 코드에 매직넘버 하드코딩 금지.
+
+| 하네스 파일 | 용도 |
+|------------|------|
+| `harness/cell_map.json` | 셀 주소, 행번호, 열 매핑 |
+| `harness/verifier_rules.json` | 5단계 검증 규칙, 임계값, 판정 기준 |
+| `harness/long_term_memory.json` | 실행 이력, 알려진 실패 패턴 |
+| `harness/change_manifest.jsonl` | 변경 근거 기록 (검증 규칙 변경 시 필수) |
+
 ## Role
 
 Executor가 집행계획서 엑셀에 입력한 값을 소스 자료(계약서, 견적서)와 직접 대조하여 검증한다.

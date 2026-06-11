@@ -21,11 +21,20 @@ import openpyxl
 from models import (
     SprintContract, StepResult, ReviewResult, InputUsed,
 )
+from services.harness_loader import cell_map, verifier_rules, record_run
 
 
-DATA_START_ROW = 8
-DATA_END_ROW = 16
-FEE_TOTAL_ROW = 17
+def _load_fee_constants() -> tuple[int, int, int]:
+    """harness/cell_map.json에서 수수료 시트 상수 로드. 없으면 기본값."""
+    try:
+        cm = cell_map()
+        fee = cm["fee_sheet"]
+        return fee["data_start_row"], fee["data_end_row"], fee["total_row"]
+    except Exception:
+        return 8, 16, 17
+
+
+DATA_START_ROW, DATA_END_ROW, FEE_TOTAL_ROW = _load_fee_constants()
 
 
 def _cell_val(ws, ref, default=0):
@@ -270,9 +279,17 @@ def _verify_conflict_resolution(
     }
 
 
-LABOR_SALARY_ROW = 25  # 공통 시트 E25 = 급료(직원) 집행
-LABOR_BONUS_ROW = 31   # 공통 시트 E31 = 상여금 집행
-LABOR_WAGE_ROW = 38    # 공통 시트 E38 = 임금(현장사원) 집행
+def _load_labor_constants() -> tuple[int, int, int]:
+    """harness/cell_map.json에서 노무비 행 상수 로드."""
+    try:
+        cm = cell_map()
+        labor = cm["common_sheet"]["labor"]
+        return labor["salary_row"], labor["bonus_row"], labor["wage_row"]
+    except Exception:
+        return 25, 31, 38
+
+
+LABOR_SALARY_ROW, LABOR_BONUS_ROW, LABOR_WAGE_ROW = _load_labor_constants()
 
 
 def _verify_breakdown(
@@ -336,12 +353,21 @@ def _verify_breakdown(
     # --- 보험료 요율 검증 ---
     if contract.rates and expected_salary > 0:
         rates = contract.rates
-        rate_checks = [
-            (19, rates.national_pension, "국민연금"),
-            (20, rates.health_insurance, "건강보험"),
-            (21, rates.industrial_accident, "산재보험"),
-            (22, rates.employment_insurance, "고용보험"),
-        ]
+        try:
+            ins = cell_map()["common_sheet"]["insurance_rates"]
+            rate_checks = [
+                (ins["national_pension_row"], rates.national_pension, "국민연금"),
+                (ins["health_insurance_row"], rates.health_insurance, "건강보험"),
+                (ins["industrial_accident_row"], rates.industrial_accident, "산재보험"),
+                (ins["employment_insurance_row"], rates.employment_insurance, "고용보험"),
+            ]
+        except Exception:
+            rate_checks = [
+                (19, rates.national_pension, "국민연금"),
+                (20, rates.health_insurance, "건강보험"),
+                (21, rates.industrial_accident, "산재보험"),
+                (22, rates.employment_insurance, "고용보험"),
+            ]
         for rate_row, expected_rate, label in rate_checks:
             actual_rate = _cell_val(ws_common, f"{col}{rate_row}")
             if expected_rate > 0:
@@ -553,9 +579,16 @@ def run_review(
     ]
     avg_score = sum(scores) / len(scores)
 
-    if avg_score >= 0.85:
+    try:
+        thresholds = verifier_rules()["verdict_thresholds"]
+        approved_t = thresholds["approved"]
+        revision_t = thresholds["needs_revision"]
+    except Exception:
+        approved_t, revision_t = 0.85, 0.60
+
+    if avg_score >= approved_t:
         verdict = "approved"
-    elif avg_score >= 0.60:
+    elif avg_score >= revision_t:
         verdict = "needs_revision"
     else:
         verdict = "rejected"
@@ -584,6 +617,19 @@ def run_review(
             "sheet": sheet,
             "cell": cell,
         })
+
+    try:
+        record_run(
+            project_id=getattr(contract, 'project_id', 'unknown'),
+            scenario="pipeline_review",
+            revision=contract.revision,
+            verdict=verdict,
+            score=round(avg_score, 3),
+            errors=all_errors,
+            token_usage=ai_tokens,
+        )
+    except Exception:
+        pass
 
     return (ReviewResult(
         verdict=verdict,

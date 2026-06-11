@@ -1,0 +1,177 @@
+{
+  "version": "1.0",
+  "description": "5단계 검증 규칙 — reviewer.py가 참조하는 선언적 검증 기준",
+  "precision": 1,
+  "precision_unit": "원",
+
+  "verdict_thresholds": {
+    "approved": 0.85,
+    "needs_revision": 0.60,
+    "rejected_below": 0.60,
+    "note": "avg_score >= 0.85 → approved, >= 0.60 → needs_revision, < 0.60 → rejected"
+  },
+
+  "stages": {
+    "1_fee_structure": {
+      "description": "수수료 시트 행별 검증 + 연도분리 + 소스대조",
+      "sheet": "5-4. 수수료산출내역",
+      "severity": "CRITICAL",
+      "checks": [
+        {
+          "id": "contract_calc",
+          "description": "계약: H×I = J (또는 J 직접값)",
+          "tolerance": 1,
+          "action": "FAIL"
+        },
+        {
+          "id": "execution_calc",
+          "description": "집행: K×L = M (또는 M 직접값)",
+          "tolerance": 1,
+          "action": "FAIL"
+        },
+        {
+          "id": "margin_check",
+          "description": "역마진 방지: 집행단가(L) ≤ 계약단가(I)",
+          "action": "FAIL"
+        },
+        {
+          "id": "current_period_qty",
+          "description": "당기수량(Q) 일치 검증",
+          "tolerance": 0.01,
+          "action": "FAIL"
+        },
+        {
+          "id": "fiscal_year_split",
+          "description": "연도분리: 다년도시 당기<전체, 단년도시 당기=전체",
+          "action": "FAIL"
+        },
+        {
+          "id": "cross_check_contract_source",
+          "description": "SprintContract fee_items vs 셀 수량/단가 일치",
+          "tolerance_qty": 0.01,
+          "tolerance_price": 1,
+          "action": "FAIL"
+        }
+      ]
+    },
+
+    "2_conflict_resolution": {
+      "description": "충돌 해결값이 실제 입력값과 일치하는지 검증",
+      "severity": "CRITICAL",
+      "checks": [
+        {
+          "id": "all_resolved",
+          "description": "모든 충돌에 user_choice 존재",
+          "action": "FAIL"
+        },
+        {
+          "id": "resolved_value_present",
+          "description": "충돌 해결값(resolved_value) 존재",
+          "action": "FAIL"
+        }
+      ]
+    },
+
+    "3_breakdown": {
+      "description": "산출내역서 교차 검증 (공통 시트 원본값 대조)",
+      "sheet": "5.집행예산산출내역서",
+      "severity": "CRITICAL",
+      "checks": [
+        {
+          "id": "labor_salary_sum",
+          "description": "노무비-급료: staff_plan 직접인원 합계 = 공통!{col}25",
+          "tolerance": 1,
+          "action": "FAIL"
+        },
+        {
+          "id": "fee_cross_check",
+          "description": "수수료 교차: 5-4시트 집행합계 = fee_items 합계",
+          "tolerance": 1,
+          "action": "FAIL"
+        },
+        {
+          "id": "insurance_rates",
+          "description": "보험료 요율: 공통!{col}19~22 vs contract.rates",
+          "tolerance": 0.0001,
+          "action": "FAIL"
+        },
+        {
+          "id": "inactive_items",
+          "description": "비활성 비목에 값 입력되면 오류",
+          "action": "FAIL"
+        }
+      ]
+    },
+
+    "4_cover_sheet": {
+      "description": "갑지 검증 (수식→공통 원본값 대조)",
+      "sheet": "0. 집행계획(갑지)",
+      "severity": "CRITICAL",
+      "checks": [
+        {
+          "id": "revenue_source",
+          "description": "매출액: 공통!F4 = confirmed_fields.revenue (천원)",
+          "tolerance": 1,
+          "action": "FAIL"
+        },
+        {
+          "id": "profit_calc",
+          "description": "영업이익: 공통!P4 = confirmed_fields.profit (천원)",
+          "tolerance": 1,
+          "action": "FAIL"
+        },
+        {
+          "id": "project_name_ref",
+          "description": "사업명: 공통!E3 = confirmed_fields.project_name",
+          "action": "FAIL"
+        },
+        {
+          "id": "period_input",
+          "description": "기간: {col}125, {col}126 값 존재",
+          "action": "FAIL"
+        },
+        {
+          "id": "profit_reverse_calc",
+          "description": "영업이익 역산: revenue - cost - overhead ≈ profit (1% 허용)",
+          "tolerance_pct": 0.01,
+          "action": "WARN"
+        }
+      ]
+    },
+
+    "5_basic_info": {
+      "description": "기본정보 확정값 = 입력값",
+      "sheet": "공통",
+      "severity": "HIGH",
+      "checks": [
+        {
+          "id": "field_match",
+          "description": "project_name, client, contractor, contract_type, pm, sales_owner, written_date 일치",
+          "fields": ["project_name", "client", "contractor", "contract_type", "pm", "sales_owner", "written_date"],
+          "normalize": true,
+          "action": "FAIL"
+        }
+      ]
+    },
+
+    "6_ai_semantic": {
+      "description": "AI 의미 검증 (독립 Agent_Session — Bedrock 호출)",
+      "severity": "MEDIUM",
+      "optional": true,
+      "checks": [
+        {
+          "id": "revenue_cost_profit_logic",
+          "description": "매출-매입-영업이익 관계 논리 검증"
+        },
+        {
+          "id": "period_qty_match",
+          "description": "기간과 수량(M/M) 일치 검증"
+        },
+        {
+          "id": "general_logic",
+          "description": "명백한 논리 오류 탐지"
+        }
+      ]
+    }
+  }
+}

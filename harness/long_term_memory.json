@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "description": "실행 이력 추적 — 파이프라인 실행마다 자동 기록, 성공률 산출",
+
+  "template_info": {
+    "filename": "템플릿.xlsx",
+    "sheets": ["공통", "5-4. 수수료산출내역", "5.집행예산산출내역서", "0. 집행계획(갑지)", "인원투입계획", "1. 현장조직_업무분장", "3. 예정공정표"],
+    "revision_sheets_dynamic": true,
+    "max_revision": 11
+  },
+
+  "known_failure_fixes": {
+    "_note": "advisory — 에이전트/사용자 참조용. 자동 적용 아님.",
+    "blue_cell_skip": {
+      "pattern": "파란색 셀 건너뛰기로 인해 값 미입력",
+      "cause": "openpyxl이 조건부 서식/테마 색상을 정확히 판독 못함",
+      "fix": "E5 현재 차수 직접 write (파란색 셀 skip 우회)"
+    },
+    "revision_empty_prev": {
+      "pattern": "수정집행(revision>=1)인데 prev_revisions 비어도 시트 생성 필요",
+      "cause": "이전 차수 데이터 없이도 시트 구조는 존재해야 함",
+      "fix": "revision >= 1이면 prev_revisions 비어도 수정집행 시트 생성"
+    },
+    "hlookup_formula_chain": {
+      "pattern": "HLOOKUP 수식이 차수 열을 참조하지 못함",
+      "cause": "수정집행 시트 추가 시 HLOOKUP E8:P149 범위 연결 누락",
+      "fix": "apply_revision_sheets에서 HLOOKUP 수식 동적 연결"
+    }
+  },
+
+  "planning_constraints": [
+    "1원 정밀도: 모든 금액 검증은 1원 오차도 FAIL",
+    "수식 보존: data_only=False에서 작업, 수식 덮어쓰기 금지",
+    "차수 열 제한: E~P (0~11차), 12차 이상 구조 한계",
+    "정보 장벽: Reviewer는 Executor의 reasoning/notes를 받지 않음"
+  ],
+
+  "runs": [],
+  "total_runs": 0,
+  "success_rate": 0.0,
+  "last_updated": "2026-06-11T00:00:00"
+}
