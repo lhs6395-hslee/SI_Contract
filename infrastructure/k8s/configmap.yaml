@@ -14,4 +14,5 @@ data:
   S3_TEMPLATES_BUCKET: "si-contract-dev-templates"
   DYNAMODB_TABLE: "si-contract-dev-projects"
   DYNAMODB_PIPELINE_TABLE: "si-contract-dev-pipeline-state"
+  AWS_SECRET_NAME: "si-contract-dev/app-secrets"
   NEXT_PUBLIC_APP_URL: "https://si.rayhli.com"
