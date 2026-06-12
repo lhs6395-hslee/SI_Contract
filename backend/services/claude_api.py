@@ -178,16 +178,29 @@ EXTRACT_PROMPT = """당신은 GS네오텍 SI/MSP 사업의 집행계획서 추�
   "salesOwner":    {{"value": "영업담당자",     "source": "...", "confidence": "..."}},
   "startDate":     {{"value": "YYYY.MM.DD",     "source": "...", "confidence": "..."}},
   "endDate":       {{"value": "YYYY.MM.DD",     "source": "...", "confidence": "..."}},
-  "revenue":       {{"value": 0, "unit": "원", "source": "...", "confidence": "..."}},
-  "cost":          {{"value": 0, "unit": "원", "source": "...", "confidence": "..."}},
+  "revenue":          {{"value": 0, "unit": "원", "source": "...", "confidence": "..."}},
+  "quoteMaterial":    {{"value": 0, "unit": "원", "source": "...", "confidence": "..."}},
+  "quoteLabor":       {{"value": 0, "unit": "원", "source": "...", "confidence": "..."}},
+  "quoteOutsourcing": {{"value": 0, "unit": "원", "source": "...", "confidence": "..."}},
+  "cost":             {{"value": 0, "unit": "원", "source": "...", "confidence": "..."}},
+  "profit":           {{"value": 0, "unit": "원", "source": "...", "confidence": "..."}},
+  "profitRate":       {{"value": 0, "unit": "%", "source": "...", "confidence": "..."}},
   "scope":         {{"value": "사업범위 내용",  "source": "...", "confidence": "..."}},
   "specialNotes":  {{"value": "특기사항",       "source": "...", "confidence": "..."}},
   "fiscalYear":    {{"value": "YYYY (4자리 연도, 예: 2026)", "source": "...", "confidence": "..."}},
   "writtenDate":   {{"value": "YYYY.MM.DD",     "source": "...", "confidence": "..."}}
 }}
 
+견적품의(원가분해) 항목 — 견적품의서/표준계약검토서의 매출원가 구성을 그대로:
+- revenue=매출(공급가), quoteMaterial=재료비, quoteLabor=노무비(자사 인건비),
+  quoteOutsourcing=외주비(협력사 수수료/도급), cost=**경비(여비·차량·통신 등 일반경비만)**,
+  profit=영업이익, profitRate=영업이익률(%).
+- **cost는 '경비'만**입니다. 전체 매출원가(총원가)나 노무비+외주비 합계를 넣지 마세요.
+  견적품의서에 매출/재료비/노무비/외주비/경비/영업이익 6분류가 있으면 각 칸을 그대로 매핑하세요.
+- 자사 인력 사업(노무비 중심)은 quoteLabor에, 외주 사업은 quoteOutsourcing에 핵심 금액이 들어갑니다.
+
 값을 찾을 수 없는 항목은 {{"value": null, "source": "", "confidence": "null"}} 로 두세요.
-숫자 항목(revenue, cost)은 원 단위 정수로. 천원 단위가 아닌 원 단위입니다.
+숫자 항목은 원 단위 정수로 (천원 아님).
 fiscalYear는 계약 시작일의 연도(4자리 숫자만, "년" 제외)를 사용하세요."""
 
 
