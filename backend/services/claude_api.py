@@ -59,18 +59,33 @@ def invoke_bedrock(
     model_id: str | None = None,
     task_type: str = "sonnet",
     user_id: str = "default",
+    images: list[str] | None = None,
 ) -> dict:
-    """공용 Bedrock invoke — LLM Gateway 통과 (모델 라우팅)."""
+    """공용 Bedrock invoke — LLM Gateway 통과 (모델 라우팅).
+
+    images: base64-encoded PNG 목록. 지정 시 멀티모달(텍스트+이미지) 메시지로 전송
+            (스캔 PDF Vision 추출용 — Claude Messages API image content block).
+    """
     from services.llm_gateway import route_model
 
     if not model_id:
         model_id = route_model(task_type, user_id)
 
+    if images:
+        content: list = [{"type": "text", "text": prompt}]
+        for b64 in images[:8]:  # 토큰/비용 상한
+            content.append({
+                "type": "image",
+                "source": {"type": "base64", "media_type": "image/png", "data": b64},
+            })
+    else:
+        content = prompt
+
     client = get_bedrock_client()
     body_dict = {
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": max_tokens,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [{"role": "user", "content": content}],
     }
     if system:
         body_dict["system"] = system
@@ -99,10 +114,18 @@ def invoke_bedrock(
         raise AIUnavailableError("AI 서비스 일시적 오류")
 
 
-def _call_claude(prompt: str, max_tokens: int = 2048, task_type: str = "sonnet", user_id: str = "default") -> str:
-    """Bedrock Claude 단일 호출 — LLM Gateway 경유."""
-    result = invoke_bedrock(prompt, max_tokens, task_type=task_type, user_id=user_id)
+def _call_claude(prompt: str, max_tokens: int = 2048, task_type: str = "sonnet", user_id: str = "default", images: list[str] | None = None) -> str:
+    """Bedrock Claude 단일 호출 — LLM Gateway 경유. images 지정 시 Vision 멀티모달."""
+    result = invoke_bedrock(prompt, max_tokens, task_type=task_type, user_id=user_id, images=images)
     return result["content"][0]["text"]
+
+
+def _collect_images(documents: list[dict]) -> list[str]:
+    """문서들에서 Vision용 base64 이미지를 모은다 (스캔 PDF 페이지)."""
+    imgs: list[str] = []
+    for d in documents:
+        imgs.extend(d.get("images") or [])
+    return imgs
 
 
 # ─── 문서 분류 ─────────────────────────────────────────────
@@ -178,7 +201,7 @@ def extract_all_fields(documents: list[dict]) -> dict:
         for i, d in enumerate(documents)
     )
     prompt = EXTRACT_PROMPT.format(doc_block=doc_block)
-    raw = _call_claude(prompt, max_tokens=1024, task_type="extract_full")
+    raw = _call_claude(prompt, max_tokens=1024, task_type="extract_full", images=_collect_images(documents))
     return _parse_json(raw, fallback={"error": "추출 실패"})
 
 
@@ -285,27 +308,27 @@ ORG_PROMPT = """당신은 GS네오텍 SI/MSP 집행계획서의 '수행 조직' 
 
 
 def extract_costs(documents: list[dict]) -> dict:
-    raw = _call_claude(COSTS_PROMPT.format(doc_block=_doc_block(documents)), max_tokens=2048, task_type="extract_costs")
+    raw = _call_claude(COSTS_PROMPT.format(doc_block=_doc_block(documents)), max_tokens=2048, task_type="extract_costs", images=_collect_images(documents))
     return _parse_json(raw, fallback={"items": []})
 
 
 def extract_people(documents: list[dict]) -> dict:
-    raw = _call_claude(PEOPLE_PROMPT.format(doc_block=_doc_block(documents)), max_tokens=2048, task_type="extract_people")
+    raw = _call_claude(PEOPLE_PROMPT.format(doc_block=_doc_block(documents)), max_tokens=2048, task_type="extract_people", images=_collect_images(documents))
     return _parse_json(raw, fallback={"staffPlan": []})
 
 
 def extract_schedule(documents: list[dict]) -> dict:
-    raw = _call_claude(SCHEDULE_PROMPT.format(doc_block=_doc_block(documents)), max_tokens=1024, task_type="extract_schedule")
+    raw = _call_claude(SCHEDULE_PROMPT.format(doc_block=_doc_block(documents)), max_tokens=1024, task_type="extract_schedule", images=_collect_images(documents))
     return _parse_json(raw, fallback={"schedule": []})
 
 
 def extract_rates(documents: list[dict]) -> dict:
-    raw = _call_claude(RATES_PROMPT.format(doc_block=_doc_block(documents)), max_tokens=512, task_type="extract_rates")
+    raw = _call_claude(RATES_PROMPT.format(doc_block=_doc_block(documents)), max_tokens=512, task_type="extract_rates", images=_collect_images(documents))
     return _parse_json(raw, fallback={"rates": None})
 
 
 def extract_org(documents: list[dict]) -> dict:
-    raw = _call_claude(ORG_PROMPT.format(doc_block=_doc_block(documents)), max_tokens=1024, task_type="extract_org")
+    raw = _call_claude(ORG_PROMPT.format(doc_block=_doc_block(documents)), max_tokens=1024, task_type="extract_org", images=_collect_images(documents))
     return _parse_json(raw, fallback={"organization": []})
 
 

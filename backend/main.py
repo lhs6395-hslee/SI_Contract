@@ -408,16 +408,27 @@ async def classify_file(file: UploadFile = File(...)):
 
 # ─── AI 값 추출 ───────────────────────────────────────────
 
+def _doc_from_content(filename: str, content: bytes) -> dict:
+    """파일 1건 → {filename, text, images}. 스캔(이미지) PDF면 Vision용 이미지 첨부."""
+    from services.file_parser import extract_text, extract_pdf_images, needs_vision
+    text = extract_text(filename, content)
+    images: list[str] = []
+    if filename.lower().endswith(".pdf") and needs_vision(text):
+        try:
+            images = extract_pdf_images(content, max_pages=8)
+        except Exception as e:
+            logger.warning("Vision 이미지 변환 실패 %s: %s", filename, e)
+    return {"filename": filename, "text": text, "images": images}
+
+
 @app.post("/api/extract", dependencies=[Depends(require_auth)])
 async def extract_fields(files: list[UploadFile] = File(...)):
     """여러 파일에서 집행계획서 필드값 추출."""
-    from services.file_parser import extract_text
     documents = []
     for f in files:
         content = await f.read()
         _check_upload_size(f.filename, content)
-        text = extract_text(f.filename, content)
-        documents.append({"filename": f.filename, "text": text})
+        documents.append(_doc_from_content(f.filename, content))
 
     if USE_AI_SERVICE:
         import httpx
@@ -432,14 +443,14 @@ async def extract_fields(files: list[UploadFile] = File(...)):
 # ─── 탭별(섹션) 추출 ───────────────────────────────────────
 
 async def _documents_from_request(files: list[UploadFile], stored_files: str) -> list[dict]:
-    """업로드 파일 또는 저장된 파일(stored_files JSON)에서 문서 텍스트를 로드한다."""
-    from services.file_parser import extract_text
+    """업로드 파일 또는 저장된 파일(stored_files JSON)에서 문서를 로드한다.
+    스캔 PDF는 Vision용 이미지를 함께 첨부(_doc_from_content)."""
     documents: list[dict] = []
 
     for f in files or []:
         content = await f.read()
         _check_upload_size(f.filename, content)
-        documents.append({"filename": f.filename, "text": extract_text(f.filename, content)})
+        documents.append(_doc_from_content(f.filename, content))
 
     if stored_files:
         from services.s3_storage import get_file
@@ -454,7 +465,7 @@ async def _documents_from_request(files: list[UploadFile], stored_files: str) ->
                 break
             try:
                 content = get_file(project_id, fn, revision=revision)
-                documents.append({"filename": fn, "text": extract_text(fn, content)})
+                documents.append(_doc_from_content(fn, content))
             except FileNotFoundError:
                 continue
 

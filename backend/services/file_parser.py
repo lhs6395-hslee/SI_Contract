@@ -5,6 +5,12 @@ import re
 from pathlib import Path
 
 MAX_CHARS = 12000  # Claude context 효율을 위한 상한
+NEEDS_VISION_MARKER = "Vision 분석 필요"  # 텍스트 레이어 없는 스캔 PDF 페이지 표식
+
+
+def needs_vision(text: str) -> bool:
+    """추출 텍스트에 스캔(이미지) 페이지 표식이 있으면 Vision 추출이 필요하다."""
+    return NEEDS_VISION_MARKER in (text or "")
 
 
 def extract_text(filename: str, content: bytes) -> str:
@@ -44,7 +50,7 @@ def _extract_pdf(content: bytes) -> str:
             text += page_text + "\n"
         else:
             has_image_pages = True
-            text += f"[페이지 {page.number + 1}: 이미지 — Vision 분석 필요]\n"
+            text += f"[페이지 {page.number + 1}: 이미지 — {NEEDS_VISION_MARKER}]\n"
         if len(text) >= MAX_CHARS:
             break
     doc.close()
