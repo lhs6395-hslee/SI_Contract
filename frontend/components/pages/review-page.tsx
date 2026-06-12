@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { apiExtract, apiExtractCosts, apiExtractPeople, apiExtractSchedule, apiExtractRates, apiExtractOrg, apiUploadFiles, apiListFiles, apiDeleteFile } from "@/lib/api";
 import { loadProjectDataAsync } from "@/lib/storage";
 import { getUser } from "@/lib/auth";
-import type { CostItem } from "@/lib/types";
+import type { CostItem, ScheduleItem } from "@/lib/types";
 
 // 날짜/숫자 값 정규화 비교 — 포맷 차이(2026.04.06 vs 2026-04-06)로 인한 오탐 방지
 const normalizeVal = (v: string | number | null): string => {
@@ -1561,63 +1561,93 @@ function TabPeople() {
 }
 
 function TabSchedule() {
-  const { extractedData } = useApp();
+  const { extractedData, setExtractedData } = useApp();
   const startDateStr = (extractedData?.extracted?.startDate?.value as string) || "";
   const startMonth = startDateStr ? parseInt(startDateStr.replace(/[^0-9.]/g, "").split(".")[1] || "1", 10) : 1;
   const months = Array.from({ length: 12 }, (_, i) => `${((startMonth - 1 + i) % 12) + 1}월`);
   const colors = ["bg-blue-500", "bg-purple-500", "bg-emerald-500", "bg-amber-500", "bg-red-500", "bg-cyan-500"];
-  const initItems = (extractedData?.schedule || []).map((s, i) => ({
-    name: s.name, start: s.startMonth, end: s.endMonth, color: colors[i % colors.length],
-  }));
-  const [items, setItems] = useState<{ name: string; start: number; end: number; color: string }[]>(initItems);
+  const schedule = extractedData?.schedule || [];
 
-  React.useEffect(() => {
-    const newSchedule = extractedData?.schedule || [];
-    if (newSchedule.length === 0) return;
-    setItems(newSchedule.map((s, i) => ({
-      name: s.name, start: s.startMonth, end: s.endMonth, color: colors[i % colors.length],
-    })));
-  }, [extractedData?.schedule]);
+  // 공정은 extractedData.schedule에 직접 저장 → 저장/export 반영 (startMonth/endMonth = 0~11 컬럼 인덱스)
+  const update = (next: ScheduleItem[]) =>
+    setExtractedData((prev) => (prev ? { ...prev, schedule: next } : prev));
+  const addRow = () => update([...schedule, { name: "새 공종", startMonth: 0, endMonth: 0, source: "수동 추가" }]);
+  const editRow = (i: number, patch: Partial<ScheduleItem>) =>
+    update(schedule.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
+  const delRow = (i: number) => update(schedule.filter((_, idx) => idx !== i));
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-base">예정공정표</CardTitle>
-        <Button variant="outline" size="sm"><Plus className="h-3 w-3 mr-1" /> 공종 추가</Button>
+        <Button variant="outline" size="sm" onClick={addRow}><Plus className="h-3 w-3 mr-1" /> 공종 추가</Button>
       </CardHeader>
       <CardContent>
-        {items.length === 0 ? (
+        {schedule.length === 0 ? (
           <div className="py-16 text-center">
             <div className="text-sm font-semibold">공종이 없습니다</div>
             <div className="text-xs text-muted-foreground mt-1">공종 추가 버튼으로 예정공정표를 작성하세요.</div>
+            <Button variant="outline" size="sm" className="mt-4" onClick={addRow}><Plus className="h-3 w-3 mr-1" /> 공종 추가</Button>
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-muted-foreground">
-                <th className="text-left py-2 px-3 font-medium">공종명</th>
-                {months.map((m) => <th key={m} className="text-center py-2 px-1 font-medium text-xs min-w-[36px] md:min-w-[50px]">{m}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((c, i) => (
-                <tr key={i}>
-                  <td className="py-1 px-3 text-xs font-medium">{c.name}</td>
-                  {Array.from({ length: 12 }).map((_, m) => (
-                    <td key={m} className="p-0">
-                      <div className="h-8 px-0.5 flex items-center">
-                        {m >= c.start && m <= c.end && (
-                          <div className={`h-5 w-full ${c.color} opacity-85 ${
-                            m === c.start && m === c.end ? "rounded" : m === c.start ? "rounded-l" : m === c.end ? "rounded-r" : ""
-                          }`} />
-                        )}
-                      </div>
-                    </td>
-                  ))}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-muted-foreground">
+                  <th className="text-left py-2 px-3 font-medium min-w-[120px]">공종명</th>
+                  {months.map((m) => <th key={m} className="text-center py-2 px-1 font-medium text-xs min-w-[36px] md:min-w-[44px]">{m}</th>)}
+                  <th className="text-center py-2 px-2 font-medium text-xs min-w-[150px]">기간 / 삭제</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {schedule.map((c, i) => {
+                  const start = c.startMonth ?? 0;
+                  const end = c.endMonth ?? 0;
+                  const color = colors[i % colors.length];
+                  return (
+                    <tr key={i} className="border-b border-border/40">
+                      <td className="py-1 px-3">
+                        <input
+                          value={c.name || ""}
+                          onChange={(e) => editRow(i, { name: e.target.value })}
+                          placeholder="공종명"
+                          className="w-full text-xs font-medium bg-transparent border-b border-transparent hover:border-input focus:border-ring focus:outline-none py-1"
+                        />
+                      </td>
+                      {Array.from({ length: 12 }).map((_, m) => (
+                        <td key={m} className="p-0">
+                          <div className="h-8 px-0.5 flex items-center">
+                            {m >= start && m <= end && (
+                              <div className={`h-5 w-full ${color} opacity-85 ${
+                                m === start && m === end ? "rounded" : m === start ? "rounded-l" : m === end ? "rounded-r" : ""
+                              }`} />
+                            )}
+                          </div>
+                        </td>
+                      ))}
+                      <td className="px-2">
+                        <div className="flex items-center gap-1 text-xs">
+                          <select value={start} onChange={(e) => editRow(i, { startMonth: Number(e.target.value) })}
+                            className="h-7 rounded border border-input bg-background px-1">
+                            {months.map((m, idx) => <option key={idx} value={idx}>{m}</option>)}
+                          </select>
+                          <span>~</span>
+                          <select value={end} onChange={(e) => editRow(i, { endMonth: Math.max(Number(e.target.value), start) })}
+                            className="h-7 rounded border border-input bg-background px-1">
+                            {months.map((m, idx) => <option key={idx} value={idx}>{m}</option>)}
+                          </select>
+                          <button onClick={() => delRow(i)} title="삭제"
+                            className="ml-1 text-muted-foreground hover:text-red-600">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </CardContent>
     </Card>
