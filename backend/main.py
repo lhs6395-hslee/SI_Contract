@@ -161,7 +161,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.url.path not in ai_paths:
             return await call_next(request)
 
-        client_ip = request.client.host if request.client else "unknown"
+        # ALB(target-type=ip) 뒤에서는 request.client.host가 ALB IP → 모든 사용자가 한 버킷을
+        # 공유해 false 429. X-Forwarded-For의 첫 IP(실제 클라이언트)로 버킷팅.
+        xff = request.headers.get("x-forwarded-for", "")
+        client_ip = xff.split(",")[0].strip() if xff else (request.client.host if request.client else "unknown")
         now = time.time()
 
         with _rate_lock:
