@@ -42,7 +42,7 @@ build_backend() {
 
 deploy_frontend() {
   kubectl set image deployment/frontend frontend=${REGISTRY}/si-contract/frontend:${VERSION} -n $NAMESPACE
-  kubectl set env deployment/frontend AWS_REGION=us-east-1 -n $NAMESPACE
+  kubectl set env deployment/frontend AWS_REGION=$REGION -n $NAMESPACE
   echo "🚀 Frontend ${VERSION} 배포됨"
 }
 
