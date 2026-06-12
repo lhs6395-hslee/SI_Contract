@@ -34,4 +34,6 @@ RUN mkdir -p /app/storage /app/results && \
 USER appuser
 EXPOSE 8001
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "2"]
+# --timeout-graceful-shutdown: SIGTERM 후 in-flight 요청(동기 파이프라인 ~60초) 완료 대기
+# (k8s terminationGracePeriodSeconds 120s 안에서 동작)
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "2", "--timeout-graceful-shutdown", "90"]

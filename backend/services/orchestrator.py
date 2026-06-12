@@ -143,17 +143,21 @@ async def run_pipeline(
 
     output_filename = f"{project_id}_집행계획서.xlsx"
     output_path = RESULTS_DIR / output_filename
-    wb.save(str(output_path))
-
-    from services.s3_storage import is_s3_enabled, _s3_client, S3_FILES_BUCKET
     s3_key = f"results/{output_filename}"
-    if is_s3_enabled():
-        try:
-            s3 = _s3_client()
-            s3.upload_file(str(output_path), S3_FILES_BUCKET, s3_key)
-        except Exception as e:
-            import logging
-            logging.getLogger("si-contract").warning("S3 upload failed: %s", e)
+
+    # Excel 저장(~5MB) + S3 업로드는 동기 블로킹 → executor에서 실행해 이벤트 루프/health 비블로킹
+    from services.s3_storage import is_s3_enabled, _s3_client, S3_FILES_BUCKET
+
+    def _save_and_upload():
+        wb.save(str(output_path))
+        if is_s3_enabled():
+            try:
+                _s3_client().upload_file(str(output_path), S3_FILES_BUCKET, s3_key)
+            except Exception as e:
+                import logging
+                logging.getLogger("si-contract").warning("S3 upload failed: %s", e)
+
+    await asyncio.get_event_loop().run_in_executor(None, _save_and_upload)
 
     state.status = PipelineStatus.completed
     state.output_file = s3_key

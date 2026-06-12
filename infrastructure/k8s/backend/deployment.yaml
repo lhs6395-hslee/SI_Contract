@@ -26,7 +26,8 @@ spec:
         app.kubernetes.io/part-of: si-contract
     spec:
       serviceAccountName: backend
-      terminationGracePeriodSeconds: 30
+      # 동기 파이프라인(~60초)이 롤링 배포/scale-down 시 SIGKILL로 잘리지 않게 충분히 확보.
+      terminationGracePeriodSeconds: 120
       automountServiceAccountToken: true
       securityContext:
         runAsNonRoot: true
@@ -113,5 +114,6 @@ spec:
             failureThreshold: 3
           lifecycle:
             preStop:
+              # ALB target deregistration_delay(15s) 동안 신규 트래픽 차단 후 종료 — 진행 요청 보호
               exec:
-                command: ["sh", "-c", "sleep 5"]
+                command: ["sh", "-c", "sleep 15"]
