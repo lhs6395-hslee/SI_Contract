@@ -11,7 +11,9 @@ from models import (
     RateSet, StepDef,
 )
 
-TEMPLATE_PATH = str(Path(__file__).parent.parent / "templates" / "템플릿.xlsx")
+from services.excel_writer import resolve_template_path
+
+TEMPLATE_PATH = str(resolve_template_path(Path(__file__).parent.parent / "templates"))
 
 CATEGORY_TO_CODE = {"fee": 1, "material": 2, "labor": 3, "supply": 4, "line": 5, "travel": 6, "other": 7}
 
@@ -119,10 +121,84 @@ def _calc_prorated_qty(start_date: str | None, end_date: str | None, raw_qty: fl
     return rounded
 
 
-def _build_fee_items(extracted: dict, cost_items: list) -> list[FeeItem]:
-    """costItems에서 수수료(fee) 항목을 FeeItem 목록으로 변환 (일할계산 포함)."""
+def _parse_fiscal_year(extracted: dict) -> int | None:
+    """fiscalYear('2025'/'2025년') → int. 없으면 시작일 연도."""
+    import re
+    raw = _extract_field(extracted, "fiscalYear")
+    if raw:
+        m = re.search(r"\d{4}", str(raw))
+        if m:
+            return int(m.group())
+    start = _normalize_date(_extract_field(extracted, "startDate"))
+    if start and str(start)[:4].isdigit():
+        return int(str(start)[:4])
+    return None
+
+
+def _mm_between(start, end) -> float:
+    """개월수 계산 — 시작월은 일할(잔여일/30, 업계 관행), 이후 월은 1개월씩."""
+    if end < start:
+        return 0.0
+    import calendar
+    if start.day == 1:
+        start_ratio = 1.0
+    else:
+        days_in_month = calendar.monthrange(start.year, start.month)[1]
+        start_ratio = (days_in_month - start.day + 1) / 30
+    return start_ratio + (end.year - start.year) * 12 + (end.month - start.month)
+
+
+def _fiscal_year_shares(start_date: str | None, end_date: str | None, fiscal_year: int | None):
+    """연도 경계 걸침 시 (당기, 이후1, 이후2~) 비율 반환. 걸치지 않으면 None.
+
+    당기 = 회계연도(fiscal_year) 내 개월 비율, 이후1 = 익년, 이후2 = fy+2년~종료 합산
+    (집행계획서 양식 버킷이 당기/이후1/이후2 3개 — 3개 연도 초과분은 이후2 합산).
+    회계연도 이전(prev) 구간은 다년도 사업의 중간 차수 작성 시 발생 — 당기/이후에
+    포함하지 않고 비율만 반환 (정산누계는 실적 기반이라 자동 입력하지 않음).
+    """
+    from datetime import date
+    try:
+        start = date.fromisoformat(_normalize_date(start_date))
+        end = date.fromisoformat(_normalize_date(end_date))
+    except (ValueError, TypeError):
+        return None
+    if fiscal_year is None or end.year == start.year or not (start.year <= fiscal_year <= end.year):
+        return None
+    total = _mm_between(start, end)
+    if total <= 0:
+        return None
+
+    def _window(y_from, y_to):
+        lo = max(start, date(y_from, 1, 1))
+        hi = min(end, date(y_to, 12, 31))
+        return _mm_between(lo, hi) if hi >= lo else 0.0
+
+    cur = _window(fiscal_year, fiscal_year)
+    next1 = _window(fiscal_year + 1, fiscal_year + 1)
+    next2 = _window(fiscal_year + 2, end.year) if end.year >= fiscal_year + 2 else 0.0
+    prev = max(0.0, total - cur - next1 - next2)
+    return {"current": cur / total, "next1": next1 / total, "next2": next2 / total,
+            "prev": prev / total, "total_mm": total}
+
+
+def _split_by_shares(amount: float, shares: dict) -> tuple[int, int, int]:
+    """금액을 (당기, 이후1, 이후2)로 배분. prev(회계연도 이전)가 없으면 합계 보존."""
+    cur = round(amount * shares["current"])
+    nx1 = round(amount * shares["next1"])
+    if shares.get("prev", 0) < 1e-9:
+        nx2 = round(amount) - cur - nx1
+    else:
+        nx2 = round(amount * shares["next2"])
+    return cur, nx1, nx2
+
+
+def _build_fee_items(extracted: dict, cost_items: list) -> tuple[list[FeeItem], list[ConflictResolution]]:
+    """costItems에서 수수료(fee) 항목을 FeeItem 목록으로 변환 (일할계산 + 연도분리 포함)."""
     start_date = _normalize_date(_extract_field(extracted, "startDate"))
     end_date = _normalize_date(_extract_field(extracted, "endDate"))
+    fiscal_year = _parse_fiscal_year(extracted)
+    fy_shares = _fiscal_year_shares(start_date, end_date, fiscal_year)
+    fee_conflicts: list[ConflictResolution] = []
 
     fee_items: list[FeeItem] = []
     for item in cost_items:
@@ -163,6 +239,32 @@ def _build_fee_items(extracted: dict, cost_items: list) -> list[FeeItem]:
             contract_amount = item.get("contractAmount", 0)
             execution_amount = item.get("executionAmount", 0)
 
+        # ── 당기(회계연도) 분리 ──
+        # 1) 명시값(currentQty/currentAmount) 있으면 사용자 확인값 — 그대로 사용 (자동 처리 금지 원칙)
+        # 2) 없고 연도 경계 걸침이면 회계연도 내 개월 비율로 배분 + 확인 플래그
+        # 3) 단년도면 집행 전액
+        explicit_cur_qty = item.get("currentQty")
+        explicit_cur_amt = item.get("currentAmount")
+        if explicit_cur_qty is not None or explicit_cur_amt is not None:
+            current_qty = explicit_cur_qty if explicit_cur_qty is not None else prorated_execution_qty
+            current_amount = explicit_cur_amt if explicit_cur_amt is not None else round(
+                (current_qty or 0) * (execution_price or 0))
+        elif fy_shares:
+            share = fy_shares["current"]
+            current_qty = round(prorated_execution_qty * share, 1)
+            current_amount = round((execution_amount or 0) * share)
+            fee_conflicts.append(ConflictResolution(
+                conflict_type="연도배분확인",
+                description=(
+                    f"수수료 '{item.get('name', '')}': 연도 경계 걸침({start_date}~{end_date}, 당기={fiscal_year}년) — "
+                    f"당기수량 {current_qty}/{prorated_execution_qty}, 당기금액 {current_amount:,.0f}원을 "
+                    f"회계연도 개월 비율({share:.4f})로 자동 배분함. 관문에서 재확인 필요."
+                ),
+            ))
+        else:
+            current_qty = prorated_execution_qty
+            current_amount = execution_amount
+
         fee_items.append(FeeItem(
             code=CATEGORY_TO_CODE.get("fee", 1),
             vendor=item.get("vendor", ""),
@@ -175,11 +277,11 @@ def _build_fee_items(extracted: dict, cost_items: list) -> list[FeeItem]:
             execution_qty=prorated_execution_qty,
             execution_unit_price=execution_price,
             execution_amount=execution_amount,
-            current_period_qty=prorated_execution_qty,
-            current_period_amount=execution_amount,
+            current_period_qty=current_qty,
+            current_period_amount=current_amount,
             source_doc=item.get("source", ""),
         ))
-    return fee_items
+    return fee_items, fee_conflicts
 
 
 def build_sprint_contract(
@@ -247,12 +349,17 @@ def build_sprint_contract(
     categories_present: set[str] = set()
     for item in cost_items:
         categories_present.add(item.get("category", "other"))
-    fee_items = _build_fee_items(extracted, cost_items)
+    fee_items, fee_conflicts = _build_fee_items(extracted, cost_items)
+
+    # 연도 경계 비율 (당기/이후1/이후2) — 비목·상여·급료 배분에 공용
+    fiscal_year = _parse_fiscal_year(extracted)
+    fy_shares = _fiscal_year_shares(start_date, end_date, fiscal_year)
 
     # 비목 블록 입력 (공통 E23~E124) — 카테고리별 집계 (desc는 줄바꿈 병합)
     from services.company_standards import is_auto_calculated
     budget_acc: dict[str, BudgetItem] = {}
     auto_calc_skipped: list[str] = []
+    budget_year_split_applied: list[str] = []
     for item in cost_items:
         cat = item.get("category", "other")
         if cat not in BUDGET_CATEGORIES:
@@ -272,10 +379,21 @@ def build_sprint_contract(
         b.contract_amount += item.get("contractAmount", 0) or 0
         b.execution_amount += item.get("executionAmount", 0) or 0
         b.settled_amount += item.get("settledAmount", 0) or 0
-        # 당기: 명시값 없으면 집행 전액 (단년도 프로젝트 기본)
-        b.current_amount += item.get("currentAmount", item.get("executionAmount", 0)) or 0
-        b.next1_amount += item.get("next1Amount", 0) or 0
-        b.next2_amount += item.get("next2Amount", 0) or 0
+        # 당기/이후: 명시값 우선 (사용자 확인값 — 자동 처리 금지 원칙)
+        # 없으면 단년도는 집행 전액, 연도 경계 걸침은 회계연도 개월 비율로 배분 (합계 보존)
+        exec_amt = item.get("executionAmount", 0) or 0
+        if "currentAmount" in item or "next1Amount" in item or "next2Amount" in item:
+            b.current_amount += item.get("currentAmount", exec_amt) or 0
+            b.next1_amount += item.get("next1Amount", 0) or 0
+            b.next2_amount += item.get("next2Amount", 0) or 0
+        elif fy_shares and exec_amt:
+            cur, nx1, nx2 = _split_by_shares(exec_amt, fy_shares)
+            b.current_amount += cur
+            b.next1_amount += nx1
+            b.next2_amount += nx2
+            budget_year_split_applied.append(item.get("name", "") or cat)
+        else:
+            b.current_amount += exec_amt
     budget_items = list(budget_acc.values())
 
     # ─── 사내 기준 보정 (사용자 확인 전제 — conflicts로 플래그) ───
@@ -283,10 +401,22 @@ def build_sprint_contract(
         standard_rate_for, holidays_in_period, GRADE_RATES,
     )
     standards_conflicts: list[ConflictResolution] = []
+    standards_conflicts.extend(fee_conflicts)
     if auto_calc_skipped:
         standards_conflicts.append(ConflictResolution(
             conflict_type="자동계산중복",
             description=f"퇴직금/보험료는 산출내역서 수식이 자동 계산하므로 비목 입력에서 제외함: {', '.join(auto_calc_skipped)}",
+        ))
+    if budget_year_split_applied:
+        standards_conflicts.append(ConflictResolution(
+            conflict_type="연도배분확인",
+            description=(
+                f"연도 경계 걸침(당기={fiscal_year}년) — 비목 당기/이후1/이후2를 회계연도 개월 비율"
+                f"(당기 {fy_shares['current']:.4f} / 이후1 {fy_shares['next1']:.4f} / 이후2 {fy_shares['next2']:.4f})로 "
+                f"자동 배분함: {', '.join(budget_year_split_applied)}. 관문에서 재확인 필요."
+                + (f" ※ 회계연도 이전 구간 비율 {fy_shares['prev']:.4f}는 정산누계 실적으로 직접 입력 필요."
+                   if fy_shares.get("prev", 0) > 1e-9 else "")
+            ),
         ))
 
     # 급료: budget_items에 labor가 없고 staffPlan이 있으면 사내 직급단가표로 산출
@@ -327,13 +457,27 @@ def build_sprint_contract(
                     description=f"{s.get('name','')}({s.get('grade','')}): 문서 급여 {doc_rate:,}원 vs 사내 단가표 {std_rate:,}원 — 사내 단가표 적용함. 급료 재확인 필요.",
                 ))
         if salary_total > 0:
-            budget_items.append(BudgetItem(
-                category="labor",
-                desc="\n".join(desc_lines),
-                contract_amount=0,
-                execution_amount=salary_total,
-                current_amount=salary_total,
-            ))
+            # 연도 경계 걸침이면 급료도 회계연도 개월 비율로 당기/이후 배분
+            if fy_shares:
+                _cur, _nx1, _nx2 = _split_by_shares(salary_total, fy_shares)
+                budget_items.append(BudgetItem(
+                    category="labor",
+                    desc="\n".join(desc_lines),
+                    contract_amount=0,
+                    execution_amount=salary_total,
+                    current_amount=_cur,
+                    next1_amount=_nx1,
+                    next2_amount=_nx2,
+                ))
+                budget_year_split_applied.append("급료(자동산출)")
+            else:
+                budget_items.append(BudgetItem(
+                    category="labor",
+                    desc="\n".join(desc_lines),
+                    contract_amount=0,
+                    execution_amount=salary_total,
+                    current_amount=salary_total,
+                ))
             standards_conflicts.append(ConflictResolution(
                 conflict_type="급료확인",
                 description=f"급료 {salary_total:,.0f}원 — 사내 직급단가표 기준 자동 산출. 관문에서 재확인 필요.",
@@ -366,6 +510,8 @@ def build_sprint_contract(
             if holidays:
                 bonus_total = 0.0
                 bonus_lines = []
+                # 상여금 연도 귀속: 명절이 속한 연도 기준 (당기=회계연도, 이후1=익년, 이후2=잔여)
+                bonus_cur = bonus_nx1 = 0.0
                 for hname, hday in holidays:
                     for i, s in enumerate(internal_staff):
                         mm = s.get("totalMM") or sum(s.get("months", []) or [])
@@ -381,13 +527,19 @@ def build_sprint_contract(
                             continue
                         amount = round(rate * months_before / 9)
                         bonus_total += amount
+                        if fiscal_year is None or hday.year <= fiscal_year:
+                            bonus_cur += amount
+                        elif hday.year == fiscal_year + 1:
+                            bonus_nx1 += amount
                         bonus_lines.append(f"{len(bonus_lines)+1}) {hname}상여 {s.get('grade','')} ({months_before}/9) * {rate/10000:.0f}만원")
                 if bonus_total > 0:
                     budget_items.append(BudgetItem(
                         category="bonus",
                         desc="\n".join(bonus_lines),
                         execution_amount=bonus_total,
-                        current_amount=bonus_total,
+                        current_amount=bonus_cur,
+                        next1_amount=bonus_nx1,
+                        next2_amount=bonus_total - bonus_cur - bonus_nx1,
                     ))
                     standards_conflicts.append(ConflictResolution(
                         conflict_type="상여확인",
@@ -397,7 +549,7 @@ def build_sprint_contract(
     # 이전 차수의 수수료 항목 — 수정집행 시트의 '당초' 열 데이터
     prev_fee_items: dict[str, list[FeeItem]] = {}
     for rev_num, rev_data in (prev_revisions or {}).items():
-        prev_fee_items[str(rev_num)] = _build_fee_items(
+        prev_fee_items[str(rev_num)], _ = _build_fee_items(
             rev_data.get("extracted", {}),
             rev_data.get("costItems", []),
         )

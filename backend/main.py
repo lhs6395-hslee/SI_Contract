@@ -1,14 +1,16 @@
 """SI 집행계획서 자동화 — FastAPI 백엔드"""
 import os
+import re
 import json
 import uuid
 import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Depends
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, JSONResponse
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -34,7 +36,11 @@ from services.project_store import (
     acquire_edit_lock,
     release_edit_lock,
     get_edit_lock_status,
+    list_projects_cached,
 )
+from services.cognito_auth import require_auth
+from services import cognito_auth as _cognito_auth_module
+from services.claude_api import AIUnavailableError
 
 import logging
 import sys
@@ -48,6 +54,36 @@ logging.basicConfig(
 logger = logging.getLogger("si-contract")
 
 app = FastAPI(title="SI 집행계획서 API", version="0.1.0")
+
+
+# ─── 전역 예외 핸들러 ──────────────────────────────────────
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc: RequestValidationError):
+    """잘못된 요청 본문/파라미터 → 500 대신 422."""
+    return JSONResponse(status_code=422, content={"error": "요청 형식이 올바르지 않습니다", "detail": exc.errors()})
+
+
+@app.exception_handler(AIUnavailableError)
+async def ai_unavailable_handler(request, exc: AIUnavailableError):
+    """AI 호출 실패 — raw AWS 예외 노출 금지, 일반 메시지로 래핑."""
+    return JSONResponse(status_code=502, content={"error": str(exc) or "AI 서비스 일시적 오류", "code": "AI_UNAVAILABLE"})
+
+
+@app.exception_handler(json.JSONDecodeError)
+async def json_decode_handler(request, exc: json.JSONDecodeError):
+    """잘못된 JSON body → 500 대신 422."""
+    return JSONResponse(status_code=422, content={"error": "잘못된 JSON 형식입니다"})
+
+
+# 프로젝트 ID 유효성 — path/XSS injection 방지
+PROJECT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+
+
+def _validate_project_id(project_id: str) -> str:
+    if not PROJECT_ID_RE.match(project_id or ""):
+        raise HTTPException(status_code=422, detail="프로젝트 ID는 영문/숫자/_/- 1~64자만 허용됩니다")
+    return project_id
 
 from telemetry import init_telemetry
 init_telemetry(app)
@@ -75,8 +111,12 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
 
-# API Key 인증 (내부 통신은 K8s 서비스 디스커버리로 보호, 외부는 API Key 필수)
+# API Key 인증 (외부는 API Key 필수)
 API_KEY = os.getenv("API_KEY", "")
+
+# 내부 서비스 간 통신 식별 — 환경변수로 주입된 shared secret.
+# 클라이언트가 임의로 보낼 수 있는 X-Internal 헤더는 신뢰하지 않는다 (스푸핑 가능).
+INTERNAL_SERVICE_SECRET = os.getenv("INTERNAL_SERVICE_SECRET", "")
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
@@ -86,9 +126,12 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         # health check, CORS preflight는 인증 스킵
         if request.url.path == "/api/health" or request.method == "OPTIONS":
             return await call_next(request)
-        # 내부 통신 (K8s 서비스 → 서비스)은 X-Internal 헤더로 스킵
-        if request.headers.get("X-Internal") == "true":
-            return await call_next(request)
+        # 내부 통신: shared secret 일치 시에만 스킵 (secret 미설정 시 내부 우회 경로 없음)
+        if INTERNAL_SERVICE_SECRET:
+            import hmac
+            provided = request.headers.get("X-Internal-Secret", "")
+            if provided and hmac.compare_digest(provided, INTERNAL_SERVICE_SECRET):
+                return await call_next(request)
         # API Key 검증 (설정된 경우에만)
         if API_KEY:
             key = request.headers.get("X-API-Key") or request.query_params.get("api_key")
@@ -131,6 +174,46 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 app.add_middleware(RateLimitMiddleware)
+
+# Oversized payload 차단 — 413
+MAX_BODY_SIZE = int(os.getenv("MAX_BODY_SIZE", str(20 * 1024 * 1024)))  # 기본 20MB
+
+class BodySizeLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        content_length = request.headers.get("Content-Length")
+        if content_length and content_length.isdigit() and int(content_length) > MAX_BODY_SIZE:
+            return JSONResponse(status_code=413, content={"error": "요청 본문이 너무 큽니다", "max_bytes": MAX_BODY_SIZE})
+        return await call_next(request)
+
+app.add_middleware(BodySizeLimitMiddleware)
+
+SECURITY_HEADERS = {
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Content-Security-Policy": "default-src 'self'",
+}
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response = await call_next(request)
+        for k, v in SECURITY_HEADERS.items():
+            response.headers.setdefault(k, v)
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# 업로드 파일 크기 제한 (개별 파일)
+MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", str(20 * 1024 * 1024)))  # 기본 20MB
+
+
+def _check_upload_size(filename: str, content: bytes) -> None:
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"파일이 너무 큽니다: {filename} ({len(content) // (1024*1024)}MB > {MAX_UPLOAD_SIZE // (1024*1024)}MB)",
+        )
 
 # 로컬 파일 저장소 (s3_storage 내부에서도 사용하지만, parse-stored 등에서 직접 경로 필요)
 STORAGE_DIR = Path(__file__).parent / "storage"
@@ -175,13 +258,14 @@ async def root():
 
 @app.get("/api/health")
 async def health():
-    has_key = bool(os.getenv("ANTHROPIC_API_KEY"))
-    return {"status": "ok", "claude_api": "configured" if has_key else "missing"}
+    """Bedrock 사용 — ANTHROPIC_API_KEY가 아닌 AWS credential 존재로 판정."""
+    from services.claude_api import bedrock_ready
+    return {"status": "ok", "claude_api": "configured" if bedrock_ready() else "missing"}
 
 
 # ─── 프로젝트별 파일 저장 ─────────────────────────────────
 
-@app.post("/api/files/{project_id}/upload")
+@app.post("/api/files/{project_id}/upload", dependencies=[Depends(require_auth)])
 async def upload_project_files(
     project_id: str,
     files: list[UploadFile] = File(...),
@@ -191,19 +275,20 @@ async def upload_project_files(
     saved = []
     for f in files:
         content = await f.read()
+        _check_upload_size(f.filename, content)
         result = s3_upload(project_id, f.filename, content, revision=revision)
         saved.append({"filename": result["filename"], "size": result["size"]})
     return {"project_id": project_id, "files": saved}
 
 
-@app.get("/api/files/{project_id}")
+@app.get("/api/files/{project_id}", dependencies=[Depends(require_auth)])
 async def list_project_files(project_id: str, revision: Optional[int] = None):
     """프로젝트의 저장된 파일 목록. revision 지정 시 해당 차수 파일만."""
     files = s3_list(project_id, revision=revision)
     return {"project_id": project_id, "files": files}
 
 
-@app.get("/api/files/{project_id}/{filename}")
+@app.get("/api/files/{project_id}/{filename}", dependencies=[Depends(require_auth)])
 async def download_project_file(project_id: str, filename: str, revision: Optional[int] = None):
     """프로젝트 파일 다운로드. revision 지정 시 해당 차수 경로 우선 탐색."""
     # Path traversal 방지
@@ -225,7 +310,7 @@ async def download_project_file(project_id: str, filename: str, revision: Option
     return FileResponse(str(file_path), filename=filename)
 
 
-@app.delete("/api/files/{project_id}/{filename}")
+@app.delete("/api/files/{project_id}/{filename}", dependencies=[Depends(require_auth)])
 async def delete_project_file(project_id: str, filename: str, revision: Optional[int] = None):
     """프로젝트 파일 삭제."""
     if ".." in filename or "/" in filename or "\\" in filename:
@@ -242,6 +327,7 @@ async def parse_file(file: UploadFile = File(...)):
     from services.file_parser import extract_text
 
     content = await file.read()
+    _check_upload_size(file.filename, content)
     text = extract_text(file.filename, content)
     return {"filename": file.filename, "text": text}
 
@@ -252,6 +338,7 @@ async def parse_pdf_images(file: UploadFile = File(...)):
     from services.file_parser import extract_pdf_images
 
     content = await file.read()
+    _check_upload_size(file.filename, content)
     ext = Path(file.filename).suffix.lower()
     if ext != ".pdf":
         return {"filename": file.filename, "images": [], "error": "PDF만 지원"}
@@ -260,7 +347,7 @@ async def parse_pdf_images(file: UploadFile = File(...)):
     return {"filename": file.filename, "images": images}
 
 
-@app.post("/api/parse-stored/{project_id}/{filename}")
+@app.post("/api/parse-stored/{project_id}/{filename}", dependencies=[Depends(require_auth)])
 async def parse_stored_file(project_id: str, filename: str, revision: Optional[int] = None):
     """저장된 프로젝트 파일에서 텍스트 추출. revision 지정 시 해당 차수 경로 우선."""
     from services.file_parser import extract_text
@@ -275,7 +362,7 @@ async def parse_stored_file(project_id: str, filename: str, revision: Optional[i
     return {"filename": filename, "text": text}
 
 
-@app.post("/api/parse-stored-images/{project_id}/{filename}")
+@app.post("/api/parse-stored-images/{project_id}/{filename}", dependencies=[Depends(require_auth)])
 async def parse_stored_pdf_images(project_id: str, filename: str, revision: Optional[int] = None):
     """저장된 PDF를 이미지로 변환. revision 지정 시 해당 차수 경로 우선."""
     from services.file_parser import extract_pdf_images
@@ -294,19 +381,25 @@ USE_AI_SERVICE = os.getenv("USE_AI_SERVICE", "false").lower() == "true"
 AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://ai-service.si-contract.svc.cluster.local:8001")
 
 
+def _internal_headers() -> dict:
+    """내부 서비스 호출용 shared secret 헤더 (설정 시에만)."""
+    return {"X-Internal-Secret": INTERNAL_SERVICE_SECRET} if INTERNAL_SERVICE_SECRET else {}
+
+
 # ─── AI 문서 분류 ─────────────────────────────────────────
 
-@app.post("/api/classify")
+@app.post("/api/classify", dependencies=[Depends(require_auth)])
 async def classify_file(file: UploadFile = File(...)):
     """파일을 읽고 Claude로 문서 종류 분류."""
     from services.file_parser import extract_text
     content = await file.read()
+    _check_upload_size(file.filename, content)
     text = extract_text(file.filename, content)
 
     if USE_AI_SERVICE:
         import httpx
         async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(f"{AI_SERVICE_URL}/classify", json={"filename": file.filename, "text": text})
+            resp = await client.post(f"{AI_SERVICE_URL}/classify", json={"filename": file.filename, "text": text}, headers=_internal_headers())
             return resp.json()
 
     from services.claude_api import classify_document
@@ -315,20 +408,21 @@ async def classify_file(file: UploadFile = File(...)):
 
 # ─── AI 값 추출 ───────────────────────────────────────────
 
-@app.post("/api/extract")
+@app.post("/api/extract", dependencies=[Depends(require_auth)])
 async def extract_fields(files: list[UploadFile] = File(...)):
     """여러 파일에서 집행계획서 필드값 추출."""
     from services.file_parser import extract_text
     documents = []
     for f in files:
         content = await f.read()
+        _check_upload_size(f.filename, content)
         text = extract_text(f.filename, content)
         documents.append({"filename": f.filename, "text": text})
 
     if USE_AI_SERVICE:
         import httpx
         async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(f"{AI_SERVICE_URL}/extract", json={"documents": documents})
+            resp = await client.post(f"{AI_SERVICE_URL}/extract", json={"documents": documents}, headers=_internal_headers())
             return resp.json()
 
     from services.claude_api import extract_all_fields
@@ -337,13 +431,13 @@ async def extract_fields(files: list[UploadFile] = File(...)):
 
 # ─── 교차 검증 ────────────────────────────────────────────
 
-@app.post("/api/validate")
+@app.post("/api/validate", dependencies=[Depends(require_auth)])
 async def validate_fields(data: dict):
     """추출된 값 교차 검증 — 충돌 감지."""
     if USE_AI_SERVICE:
         import httpx
         async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(f"{AI_SERVICE_URL}/validate", json=data)
+            resp = await client.post(f"{AI_SERVICE_URL}/validate", json=data, headers=_internal_headers())
             return resp.json()
 
     from services.claude_api import cross_validate
@@ -353,10 +447,13 @@ async def validate_fields(data: dict):
 
 # ─── 엑셀 Export ──────────────────────────────────────────
 
-@app.post("/api/export")
+@app.post("/api/export", dependencies=[Depends(require_auth)])
 async def export_excel(data: dict):
     """추출/수정된 데이터로 집행계획서 엑셀 생성."""
     from services.excel_writer import generate_excel
+
+    if not data:
+        raise HTTPException(status_code=422, detail="export할 데이터가 비어 있습니다")
 
     output_path = generate_excel(data)
     return FileResponse(
@@ -368,15 +465,17 @@ async def export_excel(data: dict):
 
 # ─── 하네스 파이프라인 ────────────────────────────────────
 
-@app.post("/api/pipeline/start")
+@app.post("/api/pipeline/start", dependencies=[Depends(require_auth)])
 async def start_pipeline(request: StarletteRequest):
     """확정된 데이터로 파이프라인 실행: Sprint_Contract 생성 → Executor → (Reviewer)."""
     from services.contract_builder import build_sprint_contract
     from services.orchestrator import run_pipeline
 
     data = _sanitize_surrogates(await _safe_json_body(request))
-    project_id = data.get("projectId", f"p_{int(time.time() * 1000)}")
+    project_id = _validate_project_id(data.get("projectId", f"p_{int(time.time() * 1000)}"))
     extracted_data = data.get("extractedData", {})
+    if not extracted_data:
+        raise HTTPException(status_code=422, detail="extractedData가 필요합니다")
 
     revision = data.get("revision", 0)
 
@@ -433,7 +532,7 @@ async def pipeline_status(project_id: str):
     return state
 
 
-@app.get("/api/pipeline/{project_id}/result")
+@app.get("/api/pipeline/{project_id}/result", dependencies=[Depends(require_auth)])
 async def pipeline_result(project_id: str):
     """완성된 집행계획서 엑셀 다운로드 (S3 우선, 로컬 fallback)."""
     state = load_pipeline_state(project_id)
@@ -472,23 +571,17 @@ async def pipeline_result(project_id: str):
 
 # ─── 프로젝트 CRUD ──────────────────────────────────────────
 
-@app.get("/api/projects")
+@app.get("/api/projects", dependencies=[Depends(require_auth)])
 async def get_projects():
-    """프로젝트 목록 (extracted 포함, revisions 제외 — N+1 쿼리 방지)."""
-    projects_list = list_projects()
-    # 각 프로젝트의 상세 데이터 로드 (revisions 제외)
-    full = []
-    for p in projects_list:
-        detail = load_project(p.get("id", ""))
-        if detail:
-            detail.pop("revisions", None)
-            full.append(detail)
-        else:
-            full.append(p)
-    return {"projects": full}
+    """프로젝트 목록 (extracted 포함, revisions 제외).
+
+    버전 스탬프 캐시 — write 시 버전 증가로 모든 uvicorn 워커에서
+    read-after-write 일관성 보장 (project_store.list_projects_cached).
+    """
+    return {"projects": list_projects_cached()}
 
 
-@app.get("/api/projects/{project_id}")
+@app.get("/api/projects/{project_id}", dependencies=[Depends(require_auth)])
 async def get_project(project_id: str):
     """프로젝트 상세 (extracted 포함)."""
     project = load_project(project_id)
@@ -497,19 +590,21 @@ async def get_project(project_id: str):
     return project
 
 
-@app.post("/api/projects")
+@app.post("/api/projects", dependencies=[Depends(require_auth)])
 async def create_project(request: StarletteRequest):
     """프로젝트 생성/수정 (upsert)."""
     data = _sanitize_surrogates(await _safe_json_body(request))
     if "id" not in data:
         data["id"] = f"p_{int(time.time() * 1000)}"
+    _validate_project_id(data["id"])
     saved = save_project(data)
     return saved
 
 
-@app.patch("/api/projects/{project_id}/revision/{revision}")
+@app.patch("/api/projects/{project_id}/revision/{revision}", dependencies=[Depends(require_auth)])
 async def patch_project_revision(project_id: str, revision: int, request: StarletteRequest):
     """현재 차수 데이터만 머지 저장 — 다른 차수는 그대로 유지."""
+    _validate_project_id(project_id)
     data = _sanitize_surrogates(await _safe_json_body(request))
     existing = load_project(project_id) or {}
     revisions = existing.get("revisions", {})
@@ -522,7 +617,7 @@ async def patch_project_revision(project_id: str, revision: int, request: Starle
     return saved
 
 
-@app.delete("/api/projects/{project_id}")
+@app.delete("/api/projects/{project_id}", dependencies=[Depends(require_auth)])
 async def remove_project(project_id: str):
     """프로젝트 삭제."""
     delete_project(project_id)
@@ -538,7 +633,7 @@ async def get_settings():
     return settings or {"rates": {}}
 
 
-@app.post("/api/settings")
+@app.post("/api/settings", dependencies=[Depends(require_auth)])
 async def save_settings(request: StarletteRequest):
     """사용자 설정 저장."""
     data = _sanitize_surrogates(await _safe_json_body(request))
@@ -549,7 +644,7 @@ async def save_settings(request: StarletteRequest):
 
 # ─── 챗봇 (프로젝트 데이터 기반 질의응답) ─────────────────
 
-@app.post("/api/chat")
+@app.post("/api/chat", dependencies=[Depends(require_auth)])
 async def chat(request: StarletteRequest):
     """프로젝트 데이터를 컨텍스트로 Claude와 대화 (Bedrock)."""
 
@@ -559,9 +654,9 @@ async def chat(request: StarletteRequest):
     revision = data.get("revision", 0)
 
     if not messages:
-        raise HTTPException(400, "messages required")
+        raise HTTPException(422, "messages required")
     if not project_id:
-        raise HTTPException(400, "projectId required — 프로젝트를 선택해 주세요")
+        raise HTTPException(422, "projectId required — 프로젝트를 선택해 주세요")
 
     # 프로젝트 컨텍스트 구성
     context = ""
@@ -608,13 +703,11 @@ async def chat(request: StarletteRequest):
 
     from services.claude_api import invoke_bedrock
     user_id = request.headers.get("X-User-Id", "anonymous")
-    try:
-        result = invoke_bedrock(
-            messages[-1]["content"], max_tokens=1024, system=system_prompt,
-            task_type="chat", user_id=user_id,
-        )
-    except RuntimeError as e:
-        raise HTTPException(502, str(e))
+    # AIUnavailableError는 전역 핸들러가 502 {"error","code":"AI_UNAVAILABLE"}로 래핑
+    result = invoke_bedrock(
+        messages[-1]["content"], max_tokens=1024, system=system_prompt,
+        task_type="chat", user_id=user_id,
+    )
 
     usage = result.get("usage", {})
 
@@ -631,15 +724,20 @@ async def chat(request: StarletteRequest):
 # ─── 프로젝트 편집 잠금 (Clash 방지 — 다중 사용자 동시 수정 방지) ───
 
 @app.post("/api/projects/{project_id}/lock")
-async def lock_project(project_id: str, data: dict):
-    """프로젝트 편집 잠금 획득."""
-    user_id = data.get("userId", "anonymous")
-    return acquire_edit_lock(project_id, user_id)
+async def lock_project(project_id: str, data: dict, current_user: dict = Depends(require_auth)):
+    """프로젝트 편집 잠금 획득 — atomic conditional write, 실패 시 409."""
+    _validate_project_id(project_id)
+    user_id = current_user.get("email", data.get("userId", "anonymous"))
+    result = acquire_edit_lock(project_id, user_id)
+    if result.get("locked"):
+        return JSONResponse(status_code=409, content={"error": "다른 사용자가 편집 중입니다", "locked": True, "by": result.get("by")})
+    return result
 
 
-@app.post("/api/projects/{project_id}/unlock")
+@app.post("/api/projects/{project_id}/unlock", dependencies=[Depends(require_auth)])
 async def unlock_project(project_id: str, data: dict):
     """프로젝트 편집 잠금 해제."""
+    _validate_project_id(project_id)
     return release_edit_lock(project_id)
 
 
@@ -657,7 +755,14 @@ import base64
 
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
-JWT_SECRET = os.getenv("JWT_SECRET", secrets.token_hex(32))
+
+# JWT_SECRET은 모든 워커/파드에서 동일해야 함 — 랜덤 폴백이면 uvicorn --workers N에서
+# 워커별 시크릿이 달라 토큰 발급 워커 ≠ 검증 워커일 때 401 (env → Secrets Manager → 랜덤 순)
+from services.secrets import get_secret as _get_secret
+JWT_SECRET = os.getenv("JWT_SECRET") or _get_secret("JWT_SECRET")
+if not JWT_SECRET:
+    JWT_SECRET = secrets.token_hex(32)
+    logger.warning("JWT_SECRET 미설정 — 워커별 랜덤 시크릿 사용 (멀티워커 환경에서 토큰 검증 실패 가능)")
 
 COGNITO_USER_POOL_ID = os.getenv("COGNITO_USER_POOL_ID", "ap-northeast-2_Wz3a01s3w")
 COGNITO_CLIENT_ID = os.getenv("COGNITO_CLIENT_ID", "6aarjh4rm676q8c61ll8li24h9")
@@ -666,7 +771,7 @@ COGNITO_CLIENT_ID = os.getenv("COGNITO_CLIENT_ID", "6aarjh4rm676q8c61ll8li24h9")
 def _create_basic_token(username: str) -> str:
     """간단한 세션 토큰 생성 (Basic Auth용)."""
     import hmac
-    payload = f"{username}:{int(time.time()) + 86400 * 7}"  # 7일 유효
+    payload = f"{username}:{int(time.time()) + 1800}"  # 30분 유효
     sig = hmac.new(JWT_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
     return base64.urlsafe_b64encode(f"{payload}:{sig}".encode()).decode()
 
@@ -689,6 +794,10 @@ def _verify_basic_token(token: str) -> str | None:
         return username
     except Exception:
         return None
+
+
+# require_auth dependency의 Basic Auth 폴백 주입 (하위 호환)
+_cognito_auth_module.basic_token_verifier = _verify_basic_token
 
 
 @app.post("/api/auth/login")

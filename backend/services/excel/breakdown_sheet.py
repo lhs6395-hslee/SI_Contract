@@ -75,7 +75,19 @@ class BreakdownSheetWriter(SheetWriter):
                 desc = ", ".join(f"{s.name}({s.grade}) {sum(s.months)}M/M" for s in internal_staff if sum(s.months) > 0)
                 self.write_cell(f"{col}{LABOR_SALARY['desc']}", desc, source="staff_plan")
                 self.write_cell(f"{col}{LABOR_SALARY['execution']}", total_salary, source="staff_plan 급료합계", calc_basis="월급×M/M")
-                self.write_cell(f"{col}{LABOR_SALARY['current']}", total_salary, source="당기=집행(최초)")
+                # 연도 경계 걸침이면 회계연도 개월 비율로 당기/이후 배분 (builder와 동일 규칙)
+                from services.contract_builder import _fiscal_year_shares, _split_by_shares
+                cf = self.contract.confirmed_fields
+                period = cf.project_period or {}
+                fy = int(cf.fiscal_year) if cf.fiscal_year and str(cf.fiscal_year)[:4].isdigit() else None
+                shares = _fiscal_year_shares(period.get("start"), period.get("end"), fy)
+                if shares:
+                    cur, nx1, nx2 = _split_by_shares(total_salary, shares)
+                    self.write_cell(f"{col}{LABOR_SALARY['current']}", cur, source="당기=집행×연도비율")
+                    self.write_cell(f"{col}{LABOR_SALARY['next1']}", nx1, source="이후1=집행×연도비율")
+                    self.write_cell(f"{col}{LABOR_SALARY['next2']}", nx2, source="이후2=집행×연도비율")
+                else:
+                    self.write_cell(f"{col}{LABOR_SALARY['current']}", total_salary, source="당기=집행(최초)")
 
     @property
     def ws(self):

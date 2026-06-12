@@ -1,4 +1,4 @@
-"""Cognito JWT 검증 — JWKS 기반 토큰 검증."""
+"""Cognito JWT 검증 — JWKS 기반 토큰 검증 + FastAPI 인증 dependency."""
 
 import os
 import json
@@ -6,6 +6,8 @@ import time
 import logging
 import urllib.request
 from base64 import urlsafe_b64decode
+
+from fastapi import HTTPException, Request
 
 logger = logging.getLogger("si-contract")
 
@@ -77,3 +79,35 @@ def verify_cognito_token(token: str) -> dict | None:
         return None
 
     return payload
+
+
+# ─── FastAPI 인증 dependency ─────────────────────────────────
+
+# Basic Auth 폴백 (하위 호환) — main.py가 _verify_basic_token을 주입
+basic_token_verifier = None
+
+
+async def require_auth(request: Request) -> dict:
+    """Bearer 토큰 필수 — Cognito JWT 우선, Basic Auth 토큰 폴백.
+
+    사용: @app.post(..., dependencies=[Depends(require_auth)])
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(401, "Not authenticated")
+
+    token = auth_header[7:]
+
+    payload = verify_cognito_token(token)
+    if payload:
+        return {
+            "email": payload.get("email", payload.get("cognito:username", "")),
+            "provider": "cognito",
+        }
+
+    if basic_token_verifier:
+        username = basic_token_verifier(token)
+        if username:
+            return {"email": username, "provider": "basic"}
+
+    raise HTTPException(401, "Invalid token")

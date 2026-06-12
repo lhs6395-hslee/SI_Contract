@@ -9,7 +9,8 @@ from botocore.config import Config
 _client = None
 _logger = logging.getLogger("si-contract")
 
-BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-6-20250514-v1:0")
+# ap-northeast-2에는 us.* inference profile이 없음 — global.* 프로필만 유효
+BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "global.anthropic.claude-sonnet-4-6")
 BEDROCK_REGION = os.getenv("AWS_REGION", "ap-northeast-2")
 
 _BEDROCK_CONFIG = Config(
@@ -19,11 +20,35 @@ _BEDROCK_CONFIG = Config(
 )
 
 
+class AIUnavailableError(RuntimeError):
+    """AI 서비스 사용 불가 — 클라이언트에는 일반 메시지만 노출."""
+
+
+def bedrock_ready() -> bool:
+    """Bedrock 호출 가능 여부 — AWS credential 존재 확인 (health check용)."""
+    try:
+        import botocore.session
+        creds = botocore.session.get_session().get_credentials()
+        return creds is not None
+    except Exception:
+        return False
+
+
 def get_bedrock_client():
-    """싱글톤 Bedrock 클라이언트 — main.py, reviewer.py에서도 사용."""
+    """싱글톤 Bedrock 클라이언트 — main.py, reviewer.py에서도 사용.
+
+    credential 미설정/획득 실패 시 raw 예외 대신 AIUnavailableError.
+    """
     global _client
     if _client is None:
-        _client = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION, config=_BEDROCK_CONFIG)
+        try:
+            client = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION, config=_BEDROCK_CONFIG)
+            if not bedrock_ready():
+                raise RuntimeError("AWS credentials not found")
+            _client = client
+        except Exception as e:
+            _logger.error("Bedrock client init failed: %s", e)
+            raise AIUnavailableError("AI 서비스 일시적 오류")
     return _client
 
 
@@ -64,13 +89,14 @@ def invoke_bedrock(
         return result
     except client.exceptions.ThrottlingException:
         _logger.warning("Bedrock throttled — rate limit exceeded")
-        raise RuntimeError("AI 서비스 요청 한도 초과. 잠시 후 다시 시도해 주세요.")
+        raise AIUnavailableError("AI 서비스 요청 한도 초과. 잠시 후 다시 시도해 주세요.")
     except client.exceptions.ModelNotReadyException:
         _logger.warning("Bedrock model not ready: %s", model_id)
-        raise RuntimeError("AI 모델이 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.")
+        raise AIUnavailableError("AI 모델이 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.")
     except Exception as e:
-        _logger.error("Bedrock invoke_model failed: %s", e)
-        raise RuntimeError(f"AI 호출 실패: {e}")
+        # raw AWS 예외 메시지는 로그에만 남기고 클라이언트에는 일반 메시지만 반환
+        _logger.error("Bedrock invoke_model failed: model=%s error=%s", model_id, e)
+        raise AIUnavailableError("AI 서비스 일시적 오류")
 
 
 def _call_claude(prompt: str, max_tokens: int = 2048, task_type: str = "sonnet", user_id: str = "default") -> str:

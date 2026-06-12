@@ -17,7 +17,9 @@ from openpyxl.cell.cell import Cell
 
 from models import SprintContract, StepResult, StepStatus, InputUsed
 
-TEMPLATE_PATH = Path(__file__).parent.parent.parent.parent / "templates" / "템플릿.xlsx"
+from services.excel_writer import resolve_template_path
+
+TEMPLATE_PATH = resolve_template_path(Path(__file__).parent.parent.parent.parent / "templates")
 
 INPUT_COLORS = {"FFFFFFCC"}
 SKIP_COLORS = {"FF0070C0"}

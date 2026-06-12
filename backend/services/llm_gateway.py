@@ -11,8 +11,9 @@ import logging
 
 logger = logging.getLogger("si-contract")
 
-HAIKU_MODEL = os.getenv("HAIKU_MODEL", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "us.anthropic.claude-sonnet-4-6-20250514-v1:0")
+# ap-northeast-2에는 us.* inference profile이 없음 — global.* 프로필만 유효
+HAIKU_MODEL = os.getenv("HAIKU_MODEL", "global.anthropic.claude-haiku-4-5-20251001-v1:0")
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "global.anthropic.claude-sonnet-4-6")
 OPUS_MODEL = os.getenv("OPUS_MODEL", "")
 
 TASK_TIER = {

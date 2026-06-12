@@ -22,15 +22,37 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_methods=["POST"],
-    allow_headers=["Content-Type", "X-Internal"],
+    allow_headers=["Content-Type", "X-Internal-Secret"],
 )
+
+# 내부 호출 검증 — backend가 보내는 shared secret 일치 시에만 허용 (설정된 경우)
+INTERNAL_SERVICE_SECRET = os.getenv("INTERNAL_SERVICE_SECRET", "")
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
+
+
+class InternalSecretMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if request.url.path == "/health" or request.method == "OPTIONS":
+            return await call_next(request)
+        import hmac
+        provided = request.headers.get("X-Internal-Secret", "")
+        if not (provided and hmac.compare_digest(provided, INTERNAL_SERVICE_SECRET)):
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+        return await call_next(request)
+
+
+if INTERNAL_SERVICE_SECRET:
+    app.add_middleware(InternalSecretMiddleware)
 
 
 # ─── Bedrock Client (공유) ─────────────────────────────
 import boto3
 from botocore.config import Config
 
-BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-opus-4-8-20251101-v1:0")
+# ap-northeast-2에는 us.* inference profile이 없음 — global.* 프로필만 유효
+BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "global.anthropic.claude-sonnet-4-6")
 BEDROCK_REGION = os.getenv("AWS_REGION", "ap-northeast-2")
 
 _client = None
@@ -62,8 +84,9 @@ def _call_claude(prompt: str, max_tokens: int = 2048) -> str:
         result = json.loads(response["body"].read())
         return result["content"][0]["text"]
     except Exception as e:
+        # raw AWS 예외는 로그에만 — 클라이언트에는 일반 메시지
         logger.error("Bedrock call failed: %s", e)
-        raise HTTPException(502, f"AI 호출 실패: {e}")
+        raise HTTPException(502, {"error": "AI 서비스 일시적 오류", "code": "AI_UNAVAILABLE"})
 
 
 def _parse_json(text: str, fallback=None):

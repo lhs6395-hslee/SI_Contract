@@ -1,12 +1,32 @@
 """집행계획서 엑셀 생성 — 템플릿 기반 값 삽입"""
 
+import os
 import tempfile
+import unicodedata
 from pathlib import Path
 from copy import copy
 from openpyxl import load_workbook
 
+
+def resolve_template_path(templates_dir: Path, filename: str = "템플릿.xlsx") -> Path:
+    """한글 파일명 NFC/NFD 정규화 차이에 안전한 템플릿 경로 해석.
+
+    macOS에서 docker build 시 파일명이 NFD 바이트로 이미지에 들어가
+    Linux에서 NFC 경로 조회가 실패한다 — 디렉토리를 스캔해 정규화 일치로 찾는다.
+    """
+    direct = templates_dir / filename
+    if direct.exists():
+        return direct
+    if templates_dir.is_dir():
+        target = unicodedata.normalize("NFC", filename)
+        for name in os.listdir(templates_dir):
+            if unicodedata.normalize("NFC", name) == target:
+                return templates_dir / name
+    return direct  # 미존재 — 호출부에서 FileNotFoundError 처리
+
+
 # 템플릿 경로 (프로젝트 루트 기준)
-TEMPLATE_PATH = Path(__file__).parent.parent.parent / "templates" / "템플릿.xlsx"
+TEMPLATE_PATH = resolve_template_path(Path(__file__).parent.parent.parent / "templates")
 
 
 def generate_excel(data: dict) -> str:
