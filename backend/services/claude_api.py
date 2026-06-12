@@ -60,6 +60,7 @@ def invoke_bedrock(
     task_type: str = "sonnet",
     user_id: str = "default",
     images: list[str] | None = None,
+    temperature: float = 0.0,
 ) -> dict:
     """공용 Bedrock invoke — LLM Gateway 통과 (모델 라우팅).
 
@@ -85,6 +86,7 @@ def invoke_bedrock(
     body_dict = {
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": max_tokens,
+        "temperature": temperature,  # 추출/분류 결정론화 (기본 0 — 같은 입력=같은 출력)
         "messages": [{"role": "user", "content": content}],
     }
     if system:
@@ -309,6 +311,32 @@ def _normalize_cost_category(cat) -> str:
     return "etc"  # 미지값도 폐기하지 않고 경비로 흡수
 
 
+# 비목 이름(name) 기반 결정론 강제 매핑 — 모델 category가 흔들려도(labor↔wage 등)
+# 같은 이름은 항상 같은 블록에 배치되도록 고정 (재현성). (구체적 키워드 우선)
+_NAME_FORCE = [
+    ("복리후생", "welfare"), ("복리", "welfare"),
+    ("급료", "labor"), ("급여", "labor"),
+    ("임금", "wage"), ("현장", "wage"),
+    ("상여", "bonus"),
+    ("여비", "travel"), ("출장", "travel"),
+    ("차량", "vehicle"),
+    ("통신", "comm"), ("회선", "comm"),
+    ("인쇄", "print"), ("출력", "print"),
+    ("임차", "rent"), ("임대", "rent"),
+    ("운반", "transport"), ("운송", "transport"),
+    ("안전", "safety"),
+]
+
+
+def _force_category_by_name(name: str, fallback: str) -> str:
+    """이름에 결정적 키워드가 있으면 그 카테고리로 강제, 없으면 fallback(정규화된 category)."""
+    n = str(name or "")
+    for kw, cat in _NAME_FORCE:
+        if kw in n:
+            return cat
+    return fallback
+
+
 PEOPLE_PROMPT = """당신은 GS네오텍 SI/MSP 집행계획서의 '투입 인원' 추출 도우미입니다.
 아래 문서에서 투입 인력 계획을 추출하세요.
 
@@ -388,10 +416,12 @@ ORG_PROMPT = """당신은 GS네오텍 SI/MSP 집행계획서의 '수행 조직' 
 def extract_costs(documents: list[dict]) -> dict:
     raw = _call_claude(COSTS_PROMPT.format(doc_block=_doc_block(documents)), max_tokens=2048, task_type="extract_costs", images=_collect_images(documents))
     result = _parse_json(raw, fallback={"items": []})
-    # 빌더 어휘로 category 정규화 (미지값 폐기 방지 — 수수료=fee 보존이 핵심)
+    # category 결정론화: ① 빌더 어휘로 정규화 → ② 이름 키워드로 강제 매핑(재현성).
+    # 모델이 같은 입력에 labor↔wage로 흔들려도, 이름(급료/임금/복리후생 등)으로 블록 고정.
     for item in result.get("items", []) or []:
         if isinstance(item, dict):
-            item["category"] = _normalize_cost_category(item.get("category"))
+            norm = _normalize_cost_category(item.get("category"))
+            item["category"] = _force_category_by_name(item.get("name"), norm)
     return result
 
 

@@ -215,6 +215,20 @@ def _check_upload_size(filename: str, content: bytes) -> None:
             detail=f"파일이 너무 큽니다: {filename} ({len(content) // (1024*1024)}MB > {MAX_UPLOAD_SIZE // (1024*1024)}MB)",
         )
 
+
+def _safe_extract_text(filename: str, content: bytes) -> str:
+    """파일 파싱 — 손상/빈/미지원 파일은 500 대신 422로 응답."""
+    from services.file_parser import extract_text
+    if not content:
+        raise HTTPException(status_code=422, detail=f"빈 파일입니다: {filename}")
+    try:
+        return extract_text(filename, content)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("파일 파싱 실패 %s: %s", filename, e)
+        raise HTTPException(status_code=422, detail=f"파일을 읽을 수 없습니다(손상/미지원 형식): {filename}")
+
 # 로컬 파일 저장소 (s3_storage 내부에서도 사용하지만, parse-stored 등에서 직접 경로 필요)
 STORAGE_DIR = Path(__file__).parent / "storage"
 STORAGE_DIR.mkdir(exist_ok=True)
@@ -324,11 +338,9 @@ async def delete_project_file(project_id: str, filename: str, revision: Optional
 @app.post("/api/parse")
 async def parse_file(file: UploadFile = File(...)):
     """파일에서 텍스트만 추출 — AI 호출 없음."""
-    from services.file_parser import extract_text
-
     content = await file.read()
     _check_upload_size(file.filename, content)
-    text = extract_text(file.filename, content)
+    text = _safe_extract_text(file.filename, content)
     return {"filename": file.filename, "text": text}
 
 
@@ -342,8 +354,13 @@ async def parse_pdf_images(file: UploadFile = File(...)):
     ext = Path(file.filename).suffix.lower()
     if ext != ".pdf":
         return {"filename": file.filename, "images": [], "error": "PDF만 지원"}
-
-    images = extract_pdf_images(content, max_pages=5)
+    if not content:
+        raise HTTPException(status_code=422, detail=f"빈 파일입니다: {file.filename}")
+    try:
+        images = extract_pdf_images(content, max_pages=5)
+    except Exception as e:
+        logger.warning("PDF 이미지 변환 실패 %s: %s", file.filename, e)
+        raise HTTPException(status_code=422, detail=f"PDF를 읽을 수 없습니다(손상): {file.filename}")
     return {"filename": file.filename, "images": images}
 
 
@@ -391,10 +408,9 @@ def _internal_headers() -> dict:
 @app.post("/api/classify", dependencies=[Depends(require_auth)])
 async def classify_file(file: UploadFile = File(...)):
     """파일을 읽고 Claude로 문서 종류 분류."""
-    from services.file_parser import extract_text
     content = await file.read()
     _check_upload_size(file.filename, content)
-    text = extract_text(file.filename, content)
+    text = _safe_extract_text(file.filename, content)
 
     if USE_AI_SERVICE:
         import httpx
@@ -410,8 +426,8 @@ async def classify_file(file: UploadFile = File(...)):
 
 def _doc_from_content(filename: str, content: bytes) -> dict:
     """파일 1건 → {filename, text, images}. 스캔(이미지) PDF면 Vision용 이미지 첨부."""
-    from services.file_parser import extract_text, extract_pdf_images, needs_vision
-    text = extract_text(filename, content)
+    from services.file_parser import extract_pdf_images, needs_vision
+    text = _safe_extract_text(filename, content)
     images: list[str] = []
     if filename.lower().endswith(".pdf") and needs_vision(text):
         try:
