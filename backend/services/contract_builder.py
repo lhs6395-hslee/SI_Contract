@@ -23,6 +23,15 @@ BUDGET_CATEGORIES = {
     "rent", "transport", "comm", "print", "safety", "etc",
 }
 
+# 비목 카테고리의 일반 라벨 — item.name이 이 라벨 그대로면 산출내역(desc)에 에코하지 않는다
+# (extract-costs가 세부내역 없이 카테고리명만 반환할 때 블록 라벨이 산출내역 칸에 중복 기입되는 것 방지)
+CATEGORY_LABELS = {
+    "노무비", "인건비", "상여금", "상여", "임금", "복리후생비", "복리후생",
+    "여비", "출장비", "여비교통비", "차량유지비", "차량", "장비", "기자재", "장비구입비",
+    "임차료", "임대료", "운반비", "운송비", "통신비", "회선료", "인쇄비", "출력비",
+    "안전관리비", "기타경비", "경비", "기타", "재료비", "외주비", "수수료", "용역비",
+}
+
 STEPS = [
     StepDef(
         id=1, sheet="공통",
@@ -373,8 +382,10 @@ def build_sprint_contract(
             auto_calc_skipped.append(item.get("name", ""))
             continue
         b = budget_acc.setdefault(cat, BudgetItem(category=cat))
-        name = item.get("name", "")
-        if name:
+        name = (item.get("name", "") or "").strip()
+        # 산출내역(desc)에는 실제 세부내역만 기입. name이 카테고리 라벨(예: "복리후생비")
+        # 그대로면 빈칸 유지 — 비목 블록 라벨이 산출내역 칸에 에코되는 것 방지.
+        if name and name not in CATEGORY_LABELS:
             b.desc = f"{b.desc}\n{name}" if b.desc else name
         b.contract_amount += item.get("contractAmount", 0) or 0
         b.execution_amount += item.get("executionAmount", 0) or 0
