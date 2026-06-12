@@ -58,29 +58,33 @@ export default function Home() {
 
     (async () => {
       const { projects: savedProjects, lastProjectId } = await loadProjectsAsync();
-      if (savedProjects.length > 0) {
-        setProjects(savedProjects.map(toProject));
-        const targetId = lastProjectId || savedProjects[0].id;
-        setProjectId(targetId);
-        setIsNewProject(false);
-        setRoute("review");
-        const pdMeta = savedProjects.find((p) => p.id === targetId);
-        // list_projects excludes extracted/revisions — must fetch full project
-        const pd = await loadProjectDataAsync(targetId);
+      if (savedProjects.length === 0) { setLoaded(true); return; }
+
+      setProjects(savedProjects.map(toProject));
+      const targetId = lastProjectId || savedProjects[0].id;
+      const pdMeta = savedProjects.find((p) => p.id === targetId);
+      setProjectId(targetId);
+      setIsNewProject(false);
+      setRoute("review");
+      if (pdMeta) {
+        setRevision(pdMeta.revision);
+        setMaxRevision(pdMeta.maxRevision || pdMeta.revision);
+      }
+      // 셸(사이드바/리뷰)을 즉시 렌더 — 전체 프로젝트 데이터는 아래에서 비차단 로드(스켈레톤).
+      setLoaded(true);
+
+      // list_projects는 extracted/revisions 제외 → 상세는 별도 fetch (렌더 차단 안 함)
+      loadProjectDataAsync(targetId).then((pd) => {
         const rev = pd?.revision ?? pdMeta?.revision ?? 0;
         const revData = pd?.revisions?.[String(rev)] || pd?.extracted;
         if (revData) {
-          // 프로젝트명 단일 출처: 차수 저장본에 projectName이 없으면 ProjectData.name에서 복원
+          // 프로젝트명 단일 출처: 차수 저장본에 없으면 ProjectData.name에서 복원
           setExtractedData({ ...revData, projectName: revData.projectName || pd?.name || pdMeta?.name || "" });
           setRevision(rev);
           setMaxRevision(pd?.maxRevision || rev);
           setLocked(pd?.locked || false);
-        } else if (pdMeta) {
-          setRevision(pdMeta.revision);
-          setMaxRevision(pdMeta.maxRevision || pdMeta.revision);
         }
-      }
-      setLoaded(true);
+      }).catch((e) => console.warn("프로젝트 상세 로드 실패:", e));
     })();
   }, []);
 
