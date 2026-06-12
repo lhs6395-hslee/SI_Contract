@@ -102,30 +102,33 @@ def list_projects_cached() -> list[dict]:
     return data
 
 
-# DynamoDB 리소스/테이블은 비싼 생성 비용(서비스 모델 로드 + 커넥션풀) →
-# 모듈 싱글톤으로 1회만 생성하고 재사용 (요청마다 재생성 시 매 액션 수백 ms~1s 지연).
-_dynamo_resource = None
-_dynamo_tables: dict = {}
+# DynamoDB 리소스/테이블 생성은 비싸므로 재사용하되, **boto3 resource는 thread-safe가
+# 아니므로 스레드별(thread-local)로 보관**한다. (모듈 싱글톤 공유 시 uvicorn 멀티워커 +
+# FastAPI threadpool 환경에서 get_item이 간헐적으로 빈 결과를 반환해 result 404 유발.)
+import threading as _threading
+_tl = _threading.local()
 
 
 def _get_dynamo_resource():
-    global _dynamo_resource
-    if _dynamo_resource is None:
+    r = getattr(_tl, "resource", None)
+    if r is None:
         import boto3
-        _dynamo_resource = boto3.resource("dynamodb")
-    return _dynamo_resource
+        r = _tl.resource = boto3.resource("dynamodb")
+    return r
 
 
 def _dynamo_project_table():
-    if "project" not in _dynamo_tables:
-        _dynamo_tables["project"] = _get_dynamo_resource().Table(DYNAMODB_TABLE)
-    return _dynamo_tables["project"]
+    t = getattr(_tl, "project_table", None)
+    if t is None:
+        t = _tl.project_table = _get_dynamo_resource().Table(DYNAMODB_TABLE)
+    return t
 
 
 def _dynamo_pipeline_table():
-    if "pipeline" not in _dynamo_tables:
-        _dynamo_tables["pipeline"] = _get_dynamo_resource().Table(DYNAMODB_PIPELINE_TABLE)
-    return _dynamo_tables["pipeline"]
+    t = getattr(_tl, "pipeline_table", None)
+    if t is None:
+        t = _tl.pipeline_table = _get_dynamo_resource().Table(DYNAMODB_PIPELINE_TABLE)
+    return t
 
 
 def is_dynamo_enabled() -> bool:
@@ -274,7 +277,7 @@ def load_pipeline_state(project_id: str) -> Optional[dict]:
     if is_dynamo_enabled():
         table = _dynamo_pipeline_table()
         if DYNAMODB_PIPELINE_TABLE != DYNAMODB_TABLE:
-            resp = table.get_item(Key={"project_id": project_id})
+            resp = table.get_item(Key={"project_id": project_id}, ConsistentRead=True)
             item = resp.get("Item")
             if not item:
                 return None
@@ -283,6 +286,7 @@ def load_pipeline_state(project_id: str) -> Optional[dict]:
             resp = table.get_item(
                 Key={"project_id": project_id},
                 ProjectionExpression="pipeline_state",
+                ConsistentRead=True,
             )
             item = resp.get("Item")
             if not item:
