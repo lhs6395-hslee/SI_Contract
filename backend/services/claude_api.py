@@ -170,8 +170,8 @@ EXTRACT_PROMPT = """당신은 GS네오텍 SI/MSP 사업의 집행계획서 추�
 다음 JSON 형식으로만 응답 (다른 텍스트 일절 없이):
 {{
   "projectName":   {{"value": "사업명",        "source": "출처(예: 계약서 p.1)", "confidence": "verified|guess|null"}},
-  "client":        {{"value": "발주처(법인명)","source": "...", "confidence": "..."}},
-  "contractor":    {{"value": "계약처",         "source": "...", "confidence": "..."}},
+  "client":        {{"value": "발주처(고객사, 갑)","source": "...", "confidence": "..."}},
+  "contractor":    {{"value": "수행사(을)",      "source": "...", "confidence": "..."}},
   "contractType":  {{"value": "수의계약/경쟁입찰 등", "source": "...", "confidence": "..."}},
   "paymentTerms":  {{"value": "수금조건",       "source": "...", "confidence": "..."}},
   "pm":            {{"value": "PM 이름/직급",   "source": "...", "confidence": "..."}},
@@ -191,13 +191,20 @@ EXTRACT_PROMPT = """당신은 GS네오텍 SI/MSP 사업의 집행계획서 추�
   "writtenDate":   {{"value": "YYYY.MM.DD",     "source": "...", "confidence": "..."}}
 }}
 
+발주처/수행사 (혼동 금지):
+- **client(발주처)는 고객사(갑)입니다.** 계약서의 '갑'/'발주기관'/고객 법인명(예: 퀘이사존, 지에스이피에스).
+- **GS네오텍/지에스네오텍은 항상 수행사(을)** — contractor에 넣고, **client에 절대 넣지 마세요.**
+
 견적품의(원가분해) 항목 — 견적품의서/표준계약검토서의 매출원가 구성을 그대로:
-- revenue=매출(공급가), quoteMaterial=재료비, quoteLabor=노무비(자사 인건비),
+- revenue=매출(공급가, 총액), quoteMaterial=재료비, quoteLabor=노무비(자사 인건비),
   quoteOutsourcing=외주비(협력사 수수료/도급), cost=**경비(여비·차량·통신 등 일반경비만)**,
   profit=영업이익, profitRate=영업이익률(%).
-- **cost는 '경비'만**입니다. 전체 매출원가(총원가)나 노무비+외주비 합계를 넣지 마세요.
-  견적품의서에 매출/재료비/노무비/외주비/경비/영업이익 6분류가 있으면 각 칸을 그대로 매핑하세요.
-- 자사 인력 사업(노무비 중심)은 quoteLabor에, 외주 사업은 quoteOutsourcing에 핵심 금액이 들어갑니다.
+- **각 항목은 매출원가 구성의 '단일 라인'입니다.** revenue ≈ quoteMaterial+quoteLabor+
+  quoteOutsourcing+cost+profit 으로 분해됩니다. **어떤 항목도 revenue(총액)와 같을 수 없습니다.**
+- **quoteLabor는 '노무비' 한 줄만** — 매출 총액이나 총원가를 넣지 마세요. (자사인력 사업이라도
+  노무비는 매출보다 작습니다. 노무비가 매출과 같으면 잘못 뽑은 것입니다.)
+- **cost는 '경비'만** — 총원가나 노무비+외주비 합계 금지.
+- 견적품의서에 매출/재료비/노무비/외주비/경비/영업이익 6분류가 있으면 각 칸을 그대로 매핑하세요.
 
 값을 찾을 수 없는 항목은 {{"value": null, "source": "", "confidence": "null"}} 로 두세요.
 숫자 항목은 원 단위 정수로 (천원 아님).
