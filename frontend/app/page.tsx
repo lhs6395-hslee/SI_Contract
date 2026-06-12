@@ -71,7 +71,7 @@ export default function Home() {
         const revData = pd?.revisions?.[String(rev)] || pd?.extracted;
         if (revData) {
           // 프로젝트명 단일 출처: 차수 저장본에 projectName이 없으면 ProjectData.name에서 복원
-          setExtractedData({ ...revData, projectName: revData.projectName || pd?.name || pdMeta?.name });
+          setExtractedData({ ...revData, projectName: revData.projectName || pd?.name || pdMeta?.name || "" });
           setRevision(rev);
           setMaxRevision(pd?.maxRevision || rev);
           setLocked(pd?.locked || false);
