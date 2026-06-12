@@ -70,7 +70,8 @@ export default function Home() {
         const rev = pd?.revision ?? pdMeta?.revision ?? 0;
         const revData = pd?.revisions?.[String(rev)] || pd?.extracted;
         if (revData) {
-          setExtractedData(revData);
+          // 프로젝트명 단일 출처: 차수 저장본에 projectName이 없으면 ProjectData.name에서 복원
+          setExtractedData({ ...revData, projectName: revData.projectName || pd?.name || pdMeta?.name });
           setRevision(rev);
           setMaxRevision(pd?.maxRevision || rev);
           setLocked(pd?.locked || false);
@@ -100,7 +101,8 @@ export default function Home() {
 
       const pd: ProjectData = {
         id: projectId,
-        name: extractedData.projectName || "새 프로젝트",
+        // 단일 출처: 폼 입력명 우선, 일시적으로 비어도 기존 저장명 유지(폴백이 이름을 덮어쓰지 않게)
+        name: extractedData.projectName || existingPd?.name || "새 프로젝트",
         client: (extractedData.extracted?.client?.value as string) || "",
         status: locked ? "locked" : "in-progress",
         revision,
@@ -148,7 +150,8 @@ export default function Home() {
     (async () => {
       const pd = await loadProjectDataAsync(projectId);
       if (pd?.revisions?.[String(revision)]) {
-        setExtractedData(pd.revisions[String(revision)]);
+        const rd = pd.revisions[String(revision)];
+        setExtractedData({ ...rd, projectName: rd.projectName || pd.name });
       }
     })();
   }, [revision, loaded, projectId]);
@@ -162,7 +165,8 @@ export default function Home() {
       if (pd) {
         const rev = pd.revision;
         const revData = pd.revisions?.[String(rev)] || pd.extracted;
-        setExtractedData(revData);
+        // 프로젝트명 단일 출처: 저장본에 없으면 ProjectData.name에서 복원
+        setExtractedData(revData ? { ...revData, projectName: revData.projectName || pd.name } : revData);
         setRevision(rev);
         setMaxRevision(pd.maxRevision || rev);
         setLocked(pd.locked || false);
