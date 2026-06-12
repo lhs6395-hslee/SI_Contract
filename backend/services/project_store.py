@@ -102,16 +102,30 @@ def list_projects_cached() -> list[dict]:
     return data
 
 
+# DynamoDB 리소스/테이블은 비싼 생성 비용(서비스 모델 로드 + 커넥션풀) →
+# 모듈 싱글톤으로 1회만 생성하고 재사용 (요청마다 재생성 시 매 액션 수백 ms~1s 지연).
+_dynamo_resource = None
+_dynamo_tables: dict = {}
+
+
+def _get_dynamo_resource():
+    global _dynamo_resource
+    if _dynamo_resource is None:
+        import boto3
+        _dynamo_resource = boto3.resource("dynamodb")
+    return _dynamo_resource
+
+
 def _dynamo_project_table():
-    import boto3
-    dynamodb = boto3.resource("dynamodb")
-    return dynamodb.Table(DYNAMODB_TABLE)
+    if "project" not in _dynamo_tables:
+        _dynamo_tables["project"] = _get_dynamo_resource().Table(DYNAMODB_TABLE)
+    return _dynamo_tables["project"]
 
 
 def _dynamo_pipeline_table():
-    import boto3
-    dynamodb = boto3.resource("dynamodb")
-    return dynamodb.Table(DYNAMODB_PIPELINE_TABLE)
+    if "pipeline" not in _dynamo_tables:
+        _dynamo_tables["pipeline"] = _get_dynamo_resource().Table(DYNAMODB_PIPELINE_TABLE)
+    return _dynamo_tables["pipeline"]
 
 
 def is_dynamo_enabled() -> bool:

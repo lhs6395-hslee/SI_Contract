@@ -15,9 +15,16 @@ _STORAGE_DIR.mkdir(exist_ok=True)
 _TEMPLATE_DIR = Path(__file__).parent / "excel"
 
 
+_s3 = None
+
+
 def _s3_client():
-    import boto3
-    return boto3.client("s3")
+    # boto3 client는 생성 비용이 큼 → 모듈 싱글톤 재사용 (스레드세이프).
+    global _s3
+    if _s3 is None:
+        import boto3
+        _s3 = boto3.client("s3")
+    return _s3
 
 
 def is_s3_enabled() -> bool:
