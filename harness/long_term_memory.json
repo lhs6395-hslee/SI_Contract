@@ -41,6 +41,214 @@
   ],
   "runs": [
     {
+      "ts": "2026-06-12T04:19:50.681204+00:00",
+      "project_id": "unknown",
+      "scenario": "pipeline_review",
+      "revision": 0,
+      "verdict": "needs_revision",
+      "score": 0.6,
+      "errors_count": 4,
+      "token_usage": {
+        "input": 1223,
+        "output": 256
+      }
+    },
+    {
+      "ts": "2026-06-12T02:33:44.706747+00:00",
+      "project_id": "unknown",
+      "scenario": "pipeline_review",
+      "revision": 0,
+      "verdict": "needs_revision",
+      "score": 0.6,
+      "errors_count": 4,
+      "token_usage": {
+        "input": 1223,
+        "output": 256
+      }
+    },
+    {
+      "ts": "2026-06-12T02:07:44.103067+00:00",
+      "project_id": "unknown",
+      "scenario": "pipeline_review",
+      "revision": 0,
+      "verdict": "rejected",
+      "score": 0.56,
+      "errors_count": 2,
+      "token_usage": {
+        "input": 1175,
+        "output": 256
+      }
+    },
+    {
+      "ts": "2026-06-12T02:07:21.057234+00:00",
+      "project_id": "unknown",
+      "scenario": "pipeline_review",
+      "revision": 0,
+      "verdict": "needs_revision",
+      "score": 0.8,
+      "errors_count": 1,
+      "token_usage": {
+        "input": 1072,
+        "output": 65
+      }
+    },
+    {
+      "ts": "2026-06-12T02:07:11.185688+00:00",
+      "project_id": "unknown",
+      "scenario": "pipeline_review",
+      "revision": 0,
+      "verdict": "needs_revision",
+      "score": 0.8,
+      "errors_count": 2,
+      "token_usage": {
+        "input": 1129,
+        "output": 107
+      }
+    },
+    {
+      "ts": "2026-06-12T02:07:05.600754+00:00",
+      "project_id": "unknown",
+      "scenario": "pipeline_review",
+      "revision": 0,
+      "verdict": "needs_revision",
+      "score": 0.76,
+      "errors_count": 2,
+      "token_usage": {
+        "input": 1106,
+        "output": 62
+      }
+    },
+    {
+      "ts": "2026-06-12T02:07:00.728968+00:00",
+      "project_id": "unknown",
+      "scenario": "pipeline_review",
+      "revision": 0,
+      "verdict": "needs_revision",
+      "score": 0.8,
+      "errors_count": 2,
+      "token_usage": {
+        "input": 1099,
+        "output": 99
+      }
+    },
+    {
+      "ts": "2026-06-12T02:06:54.344153+00:00",
+      "project_id": "unknown",
+      "scenario": "pipeline_review",
+      "revision": 0,
+      "verdict": "needs_revision",
+      "score": 0.8,
+      "errors_count": 2,
+      "token_usage": {
+        "input": 1100,
+        "output": 62
+      }
+    },
+    {
+      "ts": "2026-06-12T02:06:49.316578+00:00",
+      "project_id": "unknown",
+      "scenario": "pipeline_review",
+      "revision": 0,
+      "verdict": "needs_revision",
+      "score": 0.8,
+      "errors_count": 2,
+      "token_usage": {
+        "input": 1099,
+        "output": 132
+      }
+    },
+    {
+      "ts": "2026-06-12T01:47:40.609293+00:00",
+      "project_id": "unknown",
+      "scenario": "pipeline_review",
+      "revision": 0,
+      "verdict": "rejected",
+      "score": 0.56,
+      "errors_count": 2,
+      "token_usage": {
+        "input": 1175,
+        "output": 256
+      }
+    },
+    {
+      "ts": "2026-06-12T01:47:15.572882+00:00",
+      "project_id": "unknown",
+      "scenario": "pipeline_review",
+      "revision": 0,
+      "verdict": "needs_revision",
+      "score": 0.8,
+      "errors_count": 1,
+      "token_usage": {
+        "input": 1072,
+        "output": 62
+      }
+    },
+    {
+      "ts": "2026-06-12T01:47:06.356641+00:00",
+      "project_id": "unknown",
+      "scenario": "pipeline_review",
+      "revision": 0,
+      "verdict": "needs_revision",
+      "score": 0.8,
+      "errors_count": 2,
+      "token_usage": {
+        "input": 1129,
+        "output": 94
+      }
+    },
+    {
+      "ts": "2026-06-12T01:47:01.142389+00:00",
+      "project_id": "unknown",
+      "scenario": "pipeline_review",
+      "revision": 0,
+      "verdict": "needs_revision",
+      "score": 0.76,
+      "errors_count": 2,
+      "token_usage": {
+        "input": 1106,
+        "output": 62
+      }
+    },
+    {
+      "ts": "2026-06-12T01:46:56.385666+00:00",
+      "project_id": "unknown",
+      "scenario": "pipeline_review",
+      "revision": 0,
+      "verdict": "needs_revision",
+      "score": 0.8,
+      "errors_count": 2,
+      "token_usage": {
+        "input": 1099,
+        "output": 125
+      }
+    },
+    {
+      "ts": "2026-06-12T01:46:50.813429+00:00",
+      "project_id": "unknown",
+      "scenario": "pipeline_review",
+      "revision": 0,
+      "verdict": "needs_revision",
+      "score": 0.8,
+      "errors_count": 2,
+      "token_usage": {
+        "input": 1100,
+        "output": 134
+      }
+    },
+    {
+      "ts": "2026-06-12T01:46:43.052390+00:00",
+      "project_id": "unknown",
+      "scenario": "pipeline_review",
+      "revision": 0,
+      "verdict": "needs_revision",
+      "score": 0.8,
+      "errors_count": 2,
+      "token_usage": {
+        "input": 1099,
+        "output": 174
+      }
+    },
+    {
       "ts": "2026-06-12T00:27:28.988855+00:00",
       "project_id": "unknown",
       "scenario": "pipeline_review",
@@ -366,7 +574,7 @@
       }
     }
   ],
-  "total_runs": 25,
+  "total_runs": 41,
   "success_rate": 0.0,
-  "last_updated": "2026-06-12T00:27:28.988889+00:00"
+  "last_updated": "2026-06-12T04:19:50.681228+00:00"
 }
