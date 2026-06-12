@@ -35,3 +35,9 @@ variable "app_namespace" {
   type        = string
   default     = "si-contract"
 }
+
+variable "monitor_namespace" {
+  description = "Kubernetes namespace for monitoring components (metrics-server 등)"
+  type        = string
+  default     = "monitor"
+}

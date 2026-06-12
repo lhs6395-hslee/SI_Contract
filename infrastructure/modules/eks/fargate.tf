@@ -84,3 +84,20 @@ resource "aws_eks_fargate_profile" "aws_lb_controller" {
 
   tags = local.tags
 }
+
+################################################################################
+# Fargate Profile — Monitoring (metrics-server 등)
+################################################################################
+
+resource "aws_eks_fargate_profile" "monitor" {
+  cluster_name           = aws_eks_cluster.main.name
+  fargate_profile_name   = "${local.cluster_name}-monitor"
+  pod_execution_role_arn = aws_iam_role.fargate_pod_execution.arn
+  subnet_ids             = var.private_subnet_ids
+
+  selector {
+    namespace = var.monitor_namespace
+  }
+
+  tags = local.tags
+}
