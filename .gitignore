@@ -44,3 +44,9 @@ senario/
 
 # Excel 임시 파일
 ~$*
+
+# 검증 하네스 산출물 — senario(소스) 오염 방지. golden/생성문서는 .pipeline/S3로.
+senario/golden/
+senario/실파일테스트/
+.pipeline/_harness/
+.pipeline/실파일테스트/
