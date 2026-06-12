@@ -220,20 +220,70 @@ COSTS_PROMPT = """당신은 GS네오텍 SI/MSP 집행계획서의 '산출내역(
 
 {doc_block}
 
+category는 **반드시 아래 영문 키 중 하나**로만 분류하세요 (다른 값 금지):
+- "fee"      → 협력사/외주사에 지급하는 수수료·용역비 (MSP 상주운영 인력 수수료 등). ※ 수수료 시트의 핵심
+- "labor"    → 노무비/인건비 항목 (단, 급료는 인원 탭이 담당하므로 여기선 외주/도급 노무만)
+- "bonus"    → 상여금
+- "wage"     → 임금
+- "welfare"  → 복리후생비
+- "travel"   → 여비/출장비
+- "vehicle"  → 차량유지비
+- "equipment"→ 장비/기자재/HW/SW 구입
+- "rent"     → 임차료/임대료
+- "transport"→ 운반/운송비
+- "comm"     → 통신비/회선료
+- "print"    → 인쇄/출력비
+- "safety"   → 안전관리비
+- "etc"      → 위에 없는 일반 경비 전부 (분류 애매하면 etc)
+
 규칙:
-- 경비/재료비/외주비 등 실제 비목만 추출. 카테고리(category)는 labor/material/outsourcing/expense 중 하나로 분류.
-- **퇴직금·보험료·국민연금·건강보험·산재보험·고용보험·인건비(급료)는 제외** (산출내역서 수식이 자동 계산).
+- **퇴직금·보험료·국민연금·건강보험·산재보험·고용보험은 제외** (산출내역서 수식이 자동 계산).
 - **V.A.T.(부가세)는 제외**. 값이 전부 '-'(대시)인 행도 제외.
-- 금액은 원 단위 정수. 계약(contract)/집행(execution) 값이 구분되면 각각, 한쪽만 있으면 같은 값으로.
+- 금액은 원 단위 정수. 계약(contract)/집행(execution) 구분되면 각각, 한쪽만 있으면 같은 값으로.
+- 협력사 견적/외주 수수료는 반드시 "fee"로. 경비성 항목은 가장 가까운 키, 없으면 "etc".
 
 다음 JSON으로만 응답:
 {{"items": [
-  {{"category": "expense", "name": "비목명", "spec": "규격", "unit": "단위",
+  {{"category": "fee", "name": "비목명", "spec": "규격", "unit": "단위",
     "contractQty": 0, "contractPrice": 0, "contractAmount": 0,
     "executionQty": 0, "executionPrice": 0, "executionAmount": 0,
     "vendor": "공급처", "source": "출처", "confidence": "verified|guess"}}
 ]}}
 항목이 없으면 {{"items": []}}."""
+
+# LLM이 빌더 어휘를 벗어나면 costItem이 통째로 폐기됨(category∉BUDGET_CATEGORIES∧≠fee).
+# 흔한 변형/한글을 빌더 키로 정규화하고, 미지값은 폐기 대신 "etc"(경비)로 흡수.
+_COST_CAT_ALIAS = {
+    "fee": "fee", "수수료": "fee", "외주": "fee", "외주비": "fee", "outsourcing": "fee",
+    "협력사": "fee", "용역": "fee", "용역비": "fee", "도급": "fee",
+    "labor": "labor", "노무": "labor", "노무비": "labor", "인건비": "labor", "인력": "labor",
+    "bonus": "bonus", "상여": "bonus", "상여금": "bonus",
+    "wage": "wage", "임금": "wage",
+    "welfare": "welfare", "복리": "welfare", "복리후생": "welfare", "복리후생비": "welfare",
+    "travel": "travel", "여비": "travel", "출장": "travel", "출장비": "travel",
+    "vehicle": "vehicle", "차량": "vehicle", "차량유지비": "vehicle",
+    "equipment": "equipment", "장비": "equipment", "기자재": "equipment", "hw": "equipment",
+    "sw": "equipment", "소프트웨어": "equipment", "하드웨어": "equipment",
+    "rent": "rent", "임차": "rent", "임대": "rent", "임차료": "rent", "임대료": "rent",
+    "transport": "transport", "운반": "transport", "운송": "transport", "운반비": "transport",
+    "comm": "comm", "통신": "comm", "통신비": "comm", "회선": "comm", "회선료": "comm",
+    "print": "print", "인쇄": "print", "인쇄비": "print", "출력": "print",
+    "safety": "safety", "안전": "safety", "안전관리비": "safety",
+    "etc": "etc", "기타": "etc", "기타경비": "etc", "경비": "etc", "expense": "etc", "material": "etc", "재료비": "etc",
+}
+
+
+def _normalize_cost_category(cat) -> str:
+    if not cat:
+        return "etc"
+    key = str(cat).strip().lower()
+    if key in _COST_CAT_ALIAS:
+        return _COST_CAT_ALIAS[key]
+    # 부분 일치 (예: "외주비(협력사)") — fee를 우선 보존
+    for alias, target in _COST_CAT_ALIAS.items():
+        if alias in key:
+            return target
+    return "etc"  # 미지값도 폐기하지 않고 경비로 흡수
 
 
 PEOPLE_PROMPT = """당신은 GS네오텍 SI/MSP 집행계획서의 '투입 인원' 추출 도우미입니다.
@@ -310,7 +360,12 @@ ORG_PROMPT = """당신은 GS네오텍 SI/MSP 집행계획서의 '수행 조직' 
 
 def extract_costs(documents: list[dict]) -> dict:
     raw = _call_claude(COSTS_PROMPT.format(doc_block=_doc_block(documents)), max_tokens=2048, task_type="extract_costs", images=_collect_images(documents))
-    return _parse_json(raw, fallback={"items": []})
+    result = _parse_json(raw, fallback={"items": []})
+    # 빌더 어휘로 category 정규화 (미지값 폐기 방지 — 수수료=fee 보존이 핵심)
+    for item in result.get("items", []) or []:
+        if isinstance(item, dict):
+            item["category"] = _normalize_cost_category(item.get("category"))
+    return result
 
 
 def extract_people(documents: list[dict]) -> dict:
