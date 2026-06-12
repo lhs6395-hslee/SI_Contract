@@ -1,11 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { loginWithBasicAuth, getGoogleLoginUrl } from "@/lib/auth";
+
+const ERROR_MESSAGES: Record<string, string> = {
+  session_expired: "세션이 만료되었습니다. 다시 로그인해 주세요.",
+  no_token: "로그인 처리에 실패했습니다. 다시 시도해 주세요.",
+  token_exchange_failed: "Google 로그인 처리에 실패했습니다. 다시 시도해 주세요.",
+};
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,6 +19,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // URL의 error 파라미터를 마운트 후 읽어 안내 (useSearchParams는 Suspense 요구 → window 사용)
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("error");
+    if (code) setError(ERROR_MESSAGES[code] || "로그인이 필요합니다.");
+  }, []);
 
   const handleBasicLogin = async (e: React.FormEvent) => {
     e.preventDefault();

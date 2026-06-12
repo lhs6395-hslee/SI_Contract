@@ -771,7 +771,7 @@ COGNITO_CLIENT_ID = os.getenv("COGNITO_CLIENT_ID", "6aarjh4rm676q8c61ll8li24h9")
 def _create_basic_token(username: str) -> str:
     """간단한 세션 토큰 생성 (Basic Auth용)."""
     import hmac
-    payload = f"{username}:{int(time.time()) + 1800}"  # 30분 유효
+    payload = f"{username}:{int(time.time()) + 28800}"  # 8시간 유효
     sig = hmac.new(JWT_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
     return base64.urlsafe_b64encode(f"{payload}:{sig}".encode()).decode()
 
