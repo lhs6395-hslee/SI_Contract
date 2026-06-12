@@ -201,7 +201,8 @@ def extract_all_fields(documents: list[dict]) -> dict:
         for i, d in enumerate(documents)
     )
     prompt = EXTRACT_PROMPT.format(doc_block=doc_block)
-    raw = _call_claude(prompt, max_tokens=1024, task_type="extract_full", images=_collect_images(documents))
+    # Vision(스캔 PDF) 추출은 출력이 길어 1024 cap에 걸려 JSON이 잘리는 문제 → 여유 상한
+    raw = _call_claude(prompt, max_tokens=2048, task_type="extract_full", images=_collect_images(documents))
     return _parse_json(raw, fallback={"error": "추출 실패"})
 
 
