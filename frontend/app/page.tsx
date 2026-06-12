@@ -23,7 +23,7 @@ import {
 import { SettingsPage } from "@/components/pages/settings-page";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { useToast } from "@/components/ui/toast";
-import { ReviewSkeleton } from "@/components/ui/skeleton";
+import { ReviewSkeleton, ReviewEmptyState } from "@/components/ui/skeleton";
 
 export default function Home() {
   const router = useRouter();
@@ -38,6 +38,7 @@ export default function Home() {
   const [conflictCount, setConflictCount] = useState(0);
   const [showAddRev, setShowAddRev] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [dataLoading, setDataLoading] = useState(false); // 프로젝트 상세 fetch 진행 중 (스켈레톤 표시용)
   const { toast } = useToast();
 
   // ref로 최신 값 추적 (useCallback 의존성 없이 접근)
@@ -72,6 +73,7 @@ export default function Home() {
       }
       // 셸(사이드바/리뷰)을 즉시 렌더 — 전체 프로젝트 데이터는 아래에서 비차단 로드(스켈레톤).
       setLoaded(true);
+      setDataLoading(true);
 
       // list_projects는 extracted/revisions 제외 → 상세는 별도 fetch (렌더 차단 안 함)
       loadProjectDataAsync(targetId).then((pd) => {
@@ -79,12 +81,13 @@ export default function Home() {
         const revData = pd?.revisions?.[String(rev)] || pd?.extracted;
         if (revData) {
           // 프로젝트명 단일 출처: 차수 저장본에 없으면 ProjectData.name에서 복원
-          setExtractedData({ ...revData, projectName: revData.projectName || pd?.name || pdMeta?.name || "" });
+          setExtractedData({ ...revData, projectName: revData.projectName || pd?.name || pdMeta?.name || "", createdAt: pd?.created_at });
           setRevision(rev);
           setMaxRevision(pd?.maxRevision || rev);
           setLocked(pd?.locked || false);
         }
-      }).catch((e) => console.warn("프로젝트 상세 로드 실패:", e));
+      }).catch((e) => console.warn("프로젝트 상세 로드 실패:", e))
+        .finally(() => setDataLoading(false));
     })();
   }, []);
 
@@ -155,7 +158,7 @@ export default function Home() {
       const pd = await loadProjectDataAsync(projectId);
       if (pd?.revisions?.[String(revision)]) {
         const rd = pd.revisions[String(revision)];
-        setExtractedData({ ...rd, projectName: rd.projectName || pd.name });
+        setExtractedData({ ...rd, projectName: rd.projectName || pd.name, createdAt: pd.created_at });
       }
     })();
   }, [revision, loaded, projectId]);
@@ -164,17 +167,23 @@ export default function Home() {
   const selectProject = useCallback((id: string) => {
     setProjectId(id);
     setIsNewProject(false);
+    setExtractedData(null);   // 이전 프로젝트 데이터 클리어 (전환 중 스켈레톤)
+    setDataLoading(true);
     (async () => {
-      const pd = await loadProjectDataAsync(id);
-      if (pd) {
-        const rev = pd.revision;
-        const revData = pd.revisions?.[String(rev)] || pd.extracted;
-        // 프로젝트명 단일 출처: 저장본에 없으면 ProjectData.name에서 복원
-        setExtractedData(revData ? { ...revData, projectName: revData.projectName || pd.name } : revData);
-        setRevision(rev);
-        setMaxRevision(pd.maxRevision || rev);
-        setLocked(pd.locked || false);
-        setConflictCount(revData?.conflicts?.length || 0);
+      try {
+        const pd = await loadProjectDataAsync(id);
+        if (pd) {
+          const rev = pd.revision;
+          const revData = pd.revisions?.[String(rev)] || pd.extracted;
+          // 프로젝트명 단일 출처: 저장본에 없으면 ProjectData.name에서 복원
+          if (revData) setExtractedData({ ...revData, projectName: revData.projectName || pd.name, createdAt: pd.created_at });
+          setRevision(rev);
+          setMaxRevision(pd.maxRevision || rev);
+          setLocked(pd.locked || false);
+          setConflictCount(revData?.conflicts?.length || 0);
+        }
+      } finally {
+        setDataLoading(false);
       }
     })();
   }, []);
@@ -234,7 +243,11 @@ export default function Home() {
           <Topbar onAddRevision={() => setShowAddRev(true)} />
           <main className="flex-1 overflow-y-auto p-4 md:p-6">
             {route === "upload" && <UploadPage onComplete={completeNewProject} />}
-            {route === "review" && (extractedData ? <ReviewPage /> : <ReviewSkeleton />)}
+            {route === "review" && (
+              extractedData ? <ReviewPage />
+                : dataLoading ? <ReviewSkeleton />
+                : <ReviewEmptyState onUpload={() => { setIsNewProject(true); setRoute("upload"); }} />
+            )}
             {route === "conflicts" && <ConflictsPage />}
             {route === "export" && <ExportPage />}
             {route === "projects" && <ProjectsPage />}

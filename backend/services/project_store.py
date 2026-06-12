@@ -151,6 +151,22 @@ def save_project(project_data: dict) -> dict:
     project_data.setdefault("revenue", 0)
     project_data["updated"] = time.strftime("%Y-%m-%d")
 
+    # created_at: 최초 1회만 서버 UTC ISO로 세팅, 업데이트 시 기존 값 보존 (읽기전용 시스템 필드)
+    if not project_data.get("created_at"):
+        from datetime import datetime, timezone
+        existing_ca = None
+        if is_dynamo_enabled():
+            try:
+                resp = _dynamo_project_table().get_item(
+                    Key={"project_id": project_id}, ProjectionExpression="created_at"
+                )
+                existing_ca = resp.get("Item", {}).get("created_at")
+            except Exception:
+                pass
+        else:
+            existing_ca = (_projects.get(project_id) or {}).get("created_at")
+        project_data["created_at"] = existing_ca or datetime.now(timezone.utc).isoformat()
+
     if is_dynamo_enabled():
         table = _dynamo_project_table()
         item = _float_to_decimal({"project_id": project_id, **project_data})

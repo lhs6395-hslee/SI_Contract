@@ -21,6 +21,7 @@ export interface ProjectData {
   maxRevision: number;
   revenue: number;
   updated: string;
+  created_at?: string;  // 서버 UTC ISO (최초 생성 1회, 읽기전용)
   extracted: ExtractedData | null;
   revisions?: Record<string, ExtractedData>;  // revision별 데이터: { "0": {...}, "1": {...} }
   locked?: boolean;

@@ -32,3 +32,25 @@ export function ReviewSkeleton() {
     </div>
   );
 }
+
+export function ReviewEmptyState({ onUpload, reason }: { onUpload: () => void; reason?: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <div className="text-base font-medium text-foreground">추출된 데이터가 없습니다</div>
+      <p className="mt-2 max-w-md text-sm text-muted-foreground">
+        문서를 업로드하고 추출을 먼저 진행해 주세요.
+      </p>
+      {reason && (
+        <p className="mt-2 max-w-md text-xs text-amber-600 dark:text-amber-400">사유: {reason}</p>
+      )}
+      <div className="mt-6 flex gap-2">
+        <button
+          onClick={onUpload}
+          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+        >
+          업로드로 이동
+        </button>
+      </div>
+    </div>
+  );
+}

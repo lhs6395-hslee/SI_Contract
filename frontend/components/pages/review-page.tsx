@@ -943,6 +943,13 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
   const specialNotes = fld("specialNotes", "", "");
   const fiscalYear = fld("fiscalYear", "", "");
   const writtenDate = fld("writtenDate", "", "");
+  // 생성시각: 서버 UTC ISO → KST 표시(시:분), 읽기전용 시스템 필드 (writtenDate와 별개)
+  const createdAtKST = extractedData?.createdAt
+    ? new Date(extractedData.createdAt).toLocaleString("ko-KR", {
+        timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit",
+      })
+    : "-";
 
   return (
     <div className="space-y-4">
@@ -1048,6 +1055,10 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
               <KVRow label="종료일" value={endDate.value as string} source={endDate.source} confidence={endDate.confidence} changedFrom={endDate.changedFrom} isDate revision={revision} editLog={editLog["endDate"]} aiSuggestion={aiSuggestions["endDate"]} onChange={(v) => updateField("endDate", v)} onAiAccept={(v) => updateField("endDate", v, "AI 제안")} />
               <KVRow label="년도구분" value={fiscalYear.value as string} source={fiscalYear.source} confidence={fiscalYear.confidence} changedFrom={fiscalYear.changedFrom} isYear revision={revision} editLog={editLog["fiscalYear"]} aiSuggestion={aiSuggestions["fiscalYear"]} onChange={(v) => updateField("fiscalYear", v)} onAiAccept={(v) => updateField("fiscalYear", v, "AI 제안")} />
               <KVRow label="견적서작성일" value={writtenDate.value as string} source={writtenDate.source} confidence={writtenDate.confidence} changedFrom={writtenDate.changedFrom} isDate revision={revision} editLog={editLog["writtenDate"]} aiSuggestion={aiSuggestions["writtenDate"]} onChange={(v) => updateField("writtenDate", v)} onAiAccept={(v) => updateField("writtenDate", v, "AI 제안")} />
+              <div className="flex items-center justify-between py-2 text-sm">
+                <span className="text-muted-foreground">생성시각 <span className="text-[10px]">(읽기전용)</span></span>
+                <span className="text-foreground tabular-nums">{createdAtKST}</span>
+              </div>
             </div>
           </CardContent>
         </Card>

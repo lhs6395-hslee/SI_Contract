@@ -100,6 +100,7 @@ export interface ExtractedData {
   manuallyVerified?: string[];
   confirmedTabs?: string[];
   locked?: boolean;
+  createdAt?: string;  // 프로젝트 생성시각(UTC ISO, 읽기전용) — ProjectData.created_at에서 주입
   revisionReason?: string;
   revisionType?: string;
 }
