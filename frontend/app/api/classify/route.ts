@@ -15,7 +15,8 @@ export async function POST(req: NextRequest) {
     const proxyForm = new FormData();
     proxyForm.append("file", file);
 
-    const res = await fetchBackend("/api/classify", { method: "POST", body: proxyForm });
+    const res = await fetchBackend("/api/classify", { method: "POST", body: proxyForm },
+      { auth: req.headers.get("authorization") });
     const result = await res.json();
     return NextResponse.json(result, { status: res.status });
   } catch (err) {

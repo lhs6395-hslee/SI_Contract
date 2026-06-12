@@ -4,6 +4,8 @@
  * - 파일 저장/조회, 엑셀 생성: FastAPI 백엔드 (별도 서버)
  */
 
+import { apiFetch } from "./api-fetch";
+
 const FASTAPI_BASE = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://localhost:8000";
 
 // ─── AI 호출 → Next.js API Route (Vertex/Bedrock) ───
@@ -15,7 +17,7 @@ export async function apiClassify(file: File): Promise<{
 }> {
   const formData = new FormData();
   formData.append("file", file);
-  const res = await fetch("/api/classify", {
+  const res = await apiFetch("/api/classify", {
     method: "POST",
     body: formData,
   });
@@ -33,7 +35,7 @@ export async function apiExtract(
   if (storedFiles && storedFiles.filenames.length > 0) {
     formData.append("stored_files", JSON.stringify(storedFiles));
   }
-  const res = await fetch("/api/extract", {
+  const res = await apiFetch("/api/extract", {
     method: "POST",
     body: formData,
   });
@@ -42,7 +44,7 @@ export async function apiExtract(
 }
 
 export async function apiValidate(data: Record<string, unknown>) {
-  const res = await fetch("/api/validate", {
+  const res = await apiFetch("/api/validate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -63,7 +65,7 @@ export async function apiExtractCosts(
   if (storedFiles && storedFiles.filenames.length > 0) {
     formData.append("stored_files", JSON.stringify(storedFiles));
   }
-  const res = await fetch("/api/extract-costs", {
+  const res = await apiFetch("/api/extract-costs", {
     method: "POST",
     body: formData,
   });
@@ -78,7 +80,7 @@ async function tabExtract<T>(endpoint: string, fallback: T, storedFiles?: { proj
   if (storedFiles && storedFiles.filenames.length > 0) {
     formData.append("stored_files", JSON.stringify(storedFiles));
   }
-  const res = await fetch(endpoint, { method: "POST", body: formData });
+  const res = await apiFetch(endpoint, { method: "POST", body: formData });
   if (!res.ok) throw new Error(`추출 실패: ${res.status}`);
   return res.json();
 }
@@ -115,7 +117,7 @@ export async function apiUploadFiles(projectId: string, files: File[], revision?
   const url = revision != null
     ? `${FASTAPI_BASE}/api/files/${projectId}/upload?revision=${revision}`
     : `${FASTAPI_BASE}/api/files/${projectId}/upload`;
-  const res = await fetch(url, { method: "POST", body: formData });
+  const res = await apiFetch(url, { method: "POST", body: formData });
   if (!res.ok) throw new Error(`파일 저장 실패: ${res.status}`);
   const data = await res.json();
   return data.files;
@@ -125,7 +127,7 @@ export async function apiListFiles(projectId: string, revision?: number): Promis
   const url = revision != null
     ? `${FASTAPI_BASE}/api/files/${projectId}?revision=${revision}`
     : `${FASTAPI_BASE}/api/files/${projectId}`;
-  const res = await fetch(url);
+  const res = await apiFetch(url);
   if (!res.ok) return [];
   const data = await res.json();
   return data.files;
@@ -135,13 +137,13 @@ export async function apiDeleteFile(projectId: string, filename: string, revisio
   const url = revision != null
     ? `${FASTAPI_BASE}/api/files/${projectId}/${encodeURIComponent(filename)}?revision=${revision}`
     : `${FASTAPI_BASE}/api/files/${projectId}/${encodeURIComponent(filename)}`;
-  await fetch(url, { method: "DELETE" });
+  await apiFetch(url, { method: "DELETE" });
 }
 
 // ─── 엑셀 생성 → FastAPI 백엔드 ───
 
 export async function apiExport(data: Record<string, unknown>): Promise<Blob> {
-  const res = await fetch(`${FASTAPI_BASE}/api/export`, {
+  const res = await apiFetch(`${FASTAPI_BASE}/api/export`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -166,7 +168,7 @@ export async function apiStartPipeline(
   extractedData: Record<string, unknown>,
   revision: number = 0,
 ): Promise<PipelineResult> {
-  const res = await fetch(`${FASTAPI_BASE}/api/pipeline/start`, {
+  const res = await apiFetch(`${FASTAPI_BASE}/api/pipeline/start`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ projectId, extractedData, revision }),
@@ -176,7 +178,7 @@ export async function apiStartPipeline(
 }
 
 export async function apiPipelineResult(projectId: string): Promise<Blob> {
-  const res = await fetch(`${FASTAPI_BASE}/api/pipeline/${projectId}/result`);
+  const res = await apiFetch(`${FASTAPI_BASE}/api/pipeline/${projectId}/result`);
   if (!res.ok) throw new Error(`결과 다운로드 실패: ${res.status}`);
   return res.blob();
 }
@@ -186,19 +188,19 @@ export async function apiPipelineResult(projectId: string): Promise<Blob> {
 import type { ProjectData } from "./storage";
 
 export async function apiGetProjects(): Promise<{ projects: ProjectData[]; lastProjectId: string | null }> {
-  const res = await fetch(`${FASTAPI_BASE}/api/projects`);
+  const res = await apiFetch(`${FASTAPI_BASE}/api/projects`);
   if (!res.ok) throw new Error(`프로젝트 목록 실패: ${res.status}`);
   return res.json();
 }
 
 export async function apiGetProject(projectId: string): Promise<ProjectData> {
-  const res = await fetch(`${FASTAPI_BASE}/api/projects/${projectId}`);
+  const res = await apiFetch(`${FASTAPI_BASE}/api/projects/${projectId}`);
   if (!res.ok) throw new Error(`프로젝트 조회 실패: ${res.status}`);
   return res.json();
 }
 
 export async function apiSaveProject(project: ProjectData): Promise<void> {
-  const res = await fetch(`${FASTAPI_BASE}/api/projects`, {
+  const res = await apiFetch(`${FASTAPI_BASE}/api/projects`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(project),
@@ -211,7 +213,7 @@ export async function apiSyncRevision(
   revision: number,
   extractedData: Record<string, unknown>,
 ): Promise<void> {
-  const res = await fetch(`${FASTAPI_BASE}/api/projects/${projectId}/revision/${revision}`, {
+  const res = await apiFetch(`${FASTAPI_BASE}/api/projects/${projectId}/revision/${revision}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ extractedData }),
@@ -220,6 +222,6 @@ export async function apiSyncRevision(
 }
 
 export async function apiDeleteProject(projectId: string): Promise<void> {
-  const res = await fetch(`${FASTAPI_BASE}/api/projects/${projectId}`, { method: "DELETE" });
+  const res = await apiFetch(`${FASTAPI_BASE}/api/projects/${projectId}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`프로젝트 삭제 실패: ${res.status}`);
 }

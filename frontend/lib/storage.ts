@@ -7,6 +7,8 @@
 
 import type { Project, ExtractedData } from "./types";
 
+import { apiFetch } from "./api-fetch";
+
 const STORAGE_KEY = "si_contract";
 const FASTAPI_BASE = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://localhost:8000";
 
@@ -99,7 +101,7 @@ function syncToLocalStorage(projects: ProjectData[], lastProjectId: string | nul
 
 export async function loadProjectsAsync(): Promise<{ projects: ProjectData[]; lastProjectId: string | null }> {
   try {
-    const res = await fetch(`${FASTAPI_BASE}/api/projects`);
+    const res = await apiFetch(`${FASTAPI_BASE}/api/projects`);
     if (res.ok) {
       const data = await res.json();
       const projects: ProjectData[] = data.projects || [];
@@ -113,7 +115,7 @@ export async function loadProjectsAsync(): Promise<{ projects: ProjectData[]; la
 
 export async function saveProjectAsync(project: ProjectData): Promise<void> {
   try {
-    await fetch(`${FASTAPI_BASE}/api/projects`, {
+    await apiFetch(`${FASTAPI_BASE}/api/projects`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(project),
@@ -125,7 +127,7 @@ export async function saveProjectAsync(project: ProjectData): Promise<void> {
 
 export async function loadProjectDataAsync(id: string): Promise<ProjectData | null> {
   try {
-    const res = await fetch(`${FASTAPI_BASE}/api/projects/${id}`);
+    const res = await apiFetch(`${FASTAPI_BASE}/api/projects/${id}`);
     if (res.ok) {
       const project = await res.json();
       return project;
@@ -136,7 +138,7 @@ export async function loadProjectDataAsync(id: string): Promise<ProjectData | nu
 
 export async function deleteProjectAsync(id: string): Promise<void> {
   try {
-    await fetch(`${FASTAPI_BASE}/api/projects/${id}`, { method: "DELETE" });
+    await apiFetch(`${FASTAPI_BASE}/api/projects/${id}`, { method: "DELETE" });
   } catch { /* 서버 접근 불가 */ }
   deleteProjectFromStorage(id);
 }

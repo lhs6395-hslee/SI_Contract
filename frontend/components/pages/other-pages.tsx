@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useState, useEffect } from "react";
 import { useApp } from "@/lib/store";
 import { fmt } from "@/lib/format";
@@ -173,7 +174,7 @@ export function ExportPage() {
     (async () => {
       try {
         const FASTAPI = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://localhost:8000";
-        const res = await fetch(`${FASTAPI}/api/pipeline/${projectId}/status`);
+        const res = await apiFetch(`${FASTAPI}/api/pipeline/${projectId}/status`);
         if (res.ok) {
           const state = await res.json();
           if (state?.output_file) {

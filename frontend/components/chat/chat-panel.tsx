@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useState, useRef, useEffect } from "react";
 import { useApp } from "@/lib/store";
 import { Button } from "@/components/ui/button";
@@ -46,7 +47,7 @@ export function ChatPanel() {
     const contextMessages = newMessages.slice(-MAX_CONTEXT_MESSAGES).map(({ role, content }) => ({ role, content }));
 
     try {
-      const res = await fetch(`${FASTAPI}/api/chat`, {
+      const res = await apiFetch(`${FASTAPI}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

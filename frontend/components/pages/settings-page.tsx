@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -42,7 +43,7 @@ function saveDefaultRates(rates: DefaultRates) {
 
 async function loadDefaultRatesAsync(): Promise<DefaultRates> {
   try {
-    const res = await fetch(`${FASTAPI_BASE}/api/settings`);
+    const res = await apiFetch(`${FASTAPI_BASE}/api/settings`);
     if (res.ok) {
       const data = await res.json();
       if (data.rates && Object.keys(data.rates).length > 0) {
@@ -58,7 +59,7 @@ async function loadDefaultRatesAsync(): Promise<DefaultRates> {
 async function saveDefaultRatesAsync(rates: DefaultRates) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(rates));
   try {
-    await fetch(`${FASTAPI_BASE}/api/settings`, {
+    await apiFetch(`${FASTAPI_BASE}/api/settings`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ rates }),

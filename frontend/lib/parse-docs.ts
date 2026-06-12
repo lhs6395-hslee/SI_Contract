@@ -1,3 +1,5 @@
+import { apiFetch } from "./api-fetch";
+
 const FASTAPI = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://localhost:8000";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -13,13 +15,13 @@ export async function addFileContent(
     try {
       const f = new FormData();
       f.append("file", opts.file);
-      const r = await fetch(`${FASTAPI}/api/parse`, { method: "POST", body: f });
+      const r = await apiFetch(`${FASTAPI}/api/parse`, { method: "POST", body: f });
       if (r.ok) text = (await r.json()).text || "";
     } catch { /* */ }
   } else if (opts.projectId) {
     try {
       const revParam = opts.revision != null ? `?revision=${opts.revision}` : "";
-      const r = await fetch(`${FASTAPI}/api/parse-stored/${opts.projectId}/${encodeURIComponent(filename)}${revParam}`, { method: "POST" });
+      const r = await apiFetch(`${FASTAPI}/api/parse-stored/${opts.projectId}/${encodeURIComponent(filename)}${revParam}`, { method: "POST" });
       if (r.ok) text = (await r.json()).text || "";
     } catch { /* */ }
   }
@@ -31,13 +33,13 @@ export async function addFileContent(
       try {
         const f = new FormData();
         f.append("file", opts.file);
-        const r = await fetch(`${FASTAPI}/api/parse-images`, { method: "POST", body: f });
+        const r = await apiFetch(`${FASTAPI}/api/parse-images`, { method: "POST", body: f });
         if (r.ok) images = (await r.json()).images || [];
       } catch { /* */ }
     } else if (opts.projectId) {
       try {
         const revParam = opts.revision != null ? `?revision=${opts.revision}` : "";
-        const r = await fetch(`${FASTAPI}/api/parse-stored-images/${opts.projectId}/${encodeURIComponent(filename)}${revParam}`, { method: "POST" });
+        const r = await apiFetch(`${FASTAPI}/api/parse-stored-images/${opts.projectId}/${encodeURIComponent(filename)}${revParam}`, { method: "POST" });
         if (r.ok) images = (await r.json()).images || [];
       } catch { /* */ }
     }

@@ -22,7 +22,8 @@ export function createFormDataProxy({ path, errorFallback, label }: ProxyOpts) {
         proxyForm.append("stored_files", storedFilesRaw);
       }
 
-      const res = await fetchBackend(path, { method: "POST", body: proxyForm });
+      const res = await fetchBackend(path, { method: "POST", body: proxyForm },
+        { auth: req.headers.get("authorization") });
       const result = await res.json();
       return NextResponse.json(result, { status: res.status });
     } catch (err) {

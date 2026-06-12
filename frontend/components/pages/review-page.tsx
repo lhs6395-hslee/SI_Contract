@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import React, { useState, useEffect } from "react";
 import { useApp } from "@/lib/store";
 import { fmt } from "@/lib/format";
@@ -1869,7 +1870,7 @@ function TabHistory() {
     (async () => {
       try {
         const FASTAPI = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://localhost:8000";
-        const res = await fetch(`${FASTAPI}/api/projects/${projectId}`);
+        const res = await apiFetch(`${FASTAPI}/api/projects/${projectId}`);
         if (res.ok) {
           const data = await res.json();
           setServerRevisions(data.revisions || {});
