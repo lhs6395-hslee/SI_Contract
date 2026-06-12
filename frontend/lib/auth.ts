@@ -53,6 +53,11 @@ export function isAuthenticated(): boolean {
   return !!getToken();
 }
 
+// 현재 로그인 사용자가 관리자 권한인지 — 인증 상태(getUser)를 단일 출처로 사용.
+export function isAdmin(): boolean {
+  return getUser()?.role === "admin";
+}
+
 // ─── Google OAuth (Cognito Hosted UI) ───
 
 export function getGoogleLoginUrl(): string {

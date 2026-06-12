@@ -2,8 +2,9 @@
 
 import { useState, useRef, useCallback } from "react";
 import { useApp } from "@/lib/store";
-import { apiClassify, apiExtract, apiExtractCosts, apiExtractPeople, apiExtractSchedule, apiExtractRates, apiExtractOrg, apiUploadFiles } from "@/lib/api";
+import { apiClassify, apiExtract, apiExtractCosts, apiExtractPeople, apiExtractSchedule, apiExtractRates, apiExtractOrg, apiUploadFiles, apiGetProjects, apiGetProject } from "@/lib/api";
 import type { UploadedFile, FileCategory, ExtractedData } from "@/lib/types";
+import type { ProjectData } from "@/lib/storage";
 import {
   CloudUpload, Check, X, AlertTriangle, Loader2,
   ChevronDown, ArrowRight, FolderOpen,
@@ -57,6 +58,56 @@ export function UploadPage({ onComplete }: { onComplete?: (data: ExtractedData |
   const [extractError, setExtractError] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importList, setImportList] = useState<ProjectData[]>([]);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importingId, setImportingId] = useState<string | null>(null);
+
+  const openImport = async () => {
+    setShowImport(true);
+    setImportLoading(true);
+    try {
+      const { projects } = await apiGetProjects();
+      setImportList(projects.filter((p) => p.extracted || p.revisions));
+    } catch {
+      setImportList([]);
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  // 이전 프로젝트의 데이터(산출내역/인원/공정/요율/조직 + 기본정보)를 새 프로젝트로 복사.
+  // 파일은 가져오지 않음(원본 문서는 프로젝트별로 다름) → 빈 files로 새 프로젝트 생성.
+  const doImport = async (srcId: string) => {
+    setImportingId(srcId);
+    try {
+      const src = await apiGetProject(srcId);
+      const srcData = src.extracted || src.revisions?.["0"] || null;
+      if (!srcData) { setImportingId(null); return; }
+      const result: ExtractedData = {
+        projectName: name || `${src.name} (복사본)`,
+        extracted: srcData.extracted || {},
+        costItems: srcData.costItems || [],
+        staffPlan: srcData.staffPlan || [],
+        schedule: srcData.schedule || [],
+        rates: srcData.rates,
+        organization: srcData.organization || [],
+        conflicts: [],
+        files: [],
+      };
+      setShowImport(false);
+      if (onComplete) {
+        onComplete(result);
+      } else {
+        setExtractedData(result);
+        setConflictCount(0);
+        setIsNewProject(false);
+        setRoute("review");
+      }
+    } catch {
+      setImportingId(null);
+    }
+  };
 
   const handleFiles = useCallback((fileList: FileList) => {
     const arr = Array.from(fileList);
@@ -286,7 +337,7 @@ export function UploadPage({ onComplete }: { onComplete?: (data: ExtractedData |
           )}
 
           <div className="flex items-center justify-between pt-4 border-t">
-            <Button variant="ghost" size="sm">
+            <Button variant="ghost" size="sm" onClick={openImport}>
               <FolderOpen className="h-3.5 w-3.5 mr-1.5" /> 이전 프로젝트에서 가져오기
             </Button>
             <div className="flex items-center gap-3">
@@ -302,6 +353,44 @@ export function UploadPage({ onComplete }: { onComplete?: (data: ExtractedData |
       {extracting && (
         <ExtractModal step={step} stepDetail={stepDetail} error={extractError} fileCount={files.length}
           onCancel={() => { setExtracting(false); setExtractError(""); }} />
+      )}
+
+      {showImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowImport(false)}>
+          <div className="w-full max-w-lg mx-4 rounded-xl border bg-card p-4 md:p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold">이전 프로젝트에서 가져오기</h2>
+            <p className="text-sm text-muted-foreground mt-1">선택한 프로젝트의 산출내역·인원·공정·요율·조직·기본정보를 새 프로젝트로 복사합니다. (원본 문서 파일은 복사되지 않습니다)</p>
+            <div className="mt-4 max-h-[50vh] overflow-y-auto space-y-1.5">
+              {importLoading ? (
+                <div className="py-12 text-center text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" /> 프로젝트 목록 불러오는 중…</div>
+              ) : importList.length === 0 ? (
+                <div className="py-12 text-center text-sm text-muted-foreground">가져올 수 있는 프로젝트가 없습니다.</div>
+              ) : (
+                importList.map((p) => (
+                  <button
+                    key={p.id}
+                    disabled={importingId !== null}
+                    className="flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left hover:bg-accent disabled:opacity-50"
+                    onClick={() => doImport(p.id)}
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{p.name}</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {p.client || "발주처 미입력"} · {p.revenue ? `${(p.revenue / 100000000).toFixed(1)}억` : "금액 미정"} · {p.maxRevision > 0 ? `${p.maxRevision}차 수정집행` : "최초"}
+                      </div>
+                    </div>
+                    {importingId === p.id
+                      ? <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                      : <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                  </button>
+                ))
+              )}
+            </div>
+            <div className="mt-5 flex justify-end">
+              <Button variant="ghost" onClick={() => setShowImport(false)} disabled={importingId !== null}>닫기</Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

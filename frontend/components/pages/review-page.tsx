@@ -1217,6 +1217,16 @@ function TabCalc() {
     if (globalIdx >= 0) setItems((prev) => prev.filter((_, i) => i !== globalIdx));
   };
 
+  const addRow = () => {
+    const blank: CostItem = {
+      category: sub, name: "", spec: "", unit: "",
+      contractQty: 0, contractPrice: 0, contractAmount: 0,
+      executionQty: 0, executionPrice: 0, executionAmount: 0,
+      vendor: "", source: "manual", confidence: "verified",
+    };
+    setItems((prev) => [...prev, blank]);
+  };
+
   const updateRow = (idx: number, field: keyof CostItem, val: string) => {
     const globalIdx = items.indexOf(rows[idx]);
     if (globalIdx < 0) return;
@@ -1281,7 +1291,7 @@ function TabCalc() {
                 <RefreshCw className="h-3 w-3 mr-1" /> 재추출
               </Button>
             )}
-            <Button variant="outline" size="sm"><Plus className="h-3 w-3 mr-1" /> 행 추가</Button>
+            <Button variant="outline" size="sm" onClick={addRow}><Plus className="h-3 w-3 mr-1" /> 행 추가</Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -1378,7 +1388,7 @@ function TabCalc() {
 }
 
 function TabPeople() {
-  const { extractedData } = useApp();
+  const { extractedData, setExtractedData } = useApp();
   const mapCat = (type: string) => type === "간접" || type === "외부" ? "외부" : "자사";
   const initPeople = (extractedData?.staffPlan || []).map((s) => ({
     name: s.name, role: s.role, grade: s.grade || "", cat: mapCat(s.type || "직접"), company: s.company || (mapCat(s.type || "직접") === "자사" ? "GS네오텍" : ""), values: s.months?.length === 12 ? s.months : Array(12).fill(0),
@@ -1387,8 +1397,10 @@ function TabPeople() {
   const [people, setPeople] = useState<Person[]>(initPeople);
   const [originalPeople, setOriginalPeople] = useState<Person[]>(initPeople.map((p) => ({ ...p, values: [...p.values] })));
   const [showAdd, setShowAdd] = useState(false);
+  const syncingFromContext = React.useRef(false);
+  const firstRun = React.useRef(true);
 
-  // extractedData.staffPlan이 재추출로 바뀌면 동기화
+  // extractedData.staffPlan이 재추출로 바뀌면 동기화 (write-back 루프 방지 플래그)
   React.useEffect(() => {
     const newPlan = extractedData?.staffPlan || [];
     if (newPlan.length === 0) return;
@@ -1397,9 +1409,30 @@ function TabPeople() {
       company: s.company || (mapCat(s.type || "직접") === "자사" ? "GS네오텍" : ""),
       values: s.months?.length === 12 ? s.months : Array(12).fill(0),
     }));
+    syncingFromContext.current = true;
     setPeople(mapped);
     setOriginalPeople(mapped.map((p) => ({ ...p, values: [...p.values] })));
   }, [extractedData?.staffPlan]);
+
+  // people 수정 시 extractedData.staffPlan에 반영 → 자동저장/export 연결.
+  // monthlyRate/source는 인덱스 기준으로 기존 값 보존(직급단가 계산은 grade 기반이라 0이어도 무방).
+  React.useEffect(() => {
+    if (firstRun.current) { firstRun.current = false; return; }
+    if (syncingFromContext.current) { syncingFromContext.current = false; return; }
+    setExtractedData((prev) => {
+      if (!prev) return prev;
+      const existing = prev.staffPlan || [];
+      const mapped = people.map((p, i) => ({
+        name: p.name, role: p.role, grade: p.grade,
+        type: (p.cat === "자사" ? "직접" : "간접") as "직접" | "간접",
+        company: p.company,
+        months: p.values,
+        monthlyRate: existing[i]?.monthlyRate ?? 0,
+        source: existing[i]?.source ?? "manual",
+      }));
+      return { ...prev, staffPlan: mapped };
+    });
+  }, [people]);
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState("");
   const [newCat, setNewCat] = useState("자사");
@@ -1779,20 +1812,35 @@ function TabRates() {
 }
 
 function TabOrg() {
-  const { extractedData } = useApp();
+  const { extractedData, setExtractedData } = useApp();
   const initMembers = (extractedData?.organization || []).map((o) => ({
     role: o.role, name: o.name, scope: o.scope, lead: o.lead,
   }));
   const [members, setMembers] = useState<{ role: string; name: string; scope: string; lead?: boolean }[]>(initMembers);
   const [originalMembers, setOriginalMembers] = useState(initMembers.map((m) => ({ ...m })));
+  const syncingFromContext = React.useRef(false);
+  const firstRun = React.useRef(true);
 
+  // 재추출 등 외부에서 organization이 바뀌면 동기화 (write-back 루프 방지 플래그)
   React.useEffect(() => {
     const newOrg = extractedData?.organization || [];
     if (newOrg.length === 0) return;
     const mapped = newOrg.map((o) => ({ role: o.role, name: o.name, scope: o.scope, lead: o.lead }));
+    syncingFromContext.current = true;
     setMembers(mapped);
     setOriginalMembers(mapped.map((m) => ({ ...m })));
   }, [extractedData?.organization]);
+
+  // members 수정 시 extractedData.organization에 반영 → 자동저장/export 연결
+  React.useEffect(() => {
+    if (firstRun.current) { firstRun.current = false; return; }
+    if (syncingFromContext.current) { syncingFromContext.current = false; return; }
+    setExtractedData((prev) => {
+      if (!prev) return prev;
+      const mapped = members.map((m) => ({ role: m.role, name: m.name, scope: m.scope, lead: m.lead ?? false }));
+      return { ...prev, organization: mapped };
+    });
+  }, [members]);
 
   const isMemberEdited = (idx: number, field: "role" | "name" | "scope"): boolean => {
     const orig = originalMembers[idx];
@@ -1808,17 +1856,22 @@ function TabOrg() {
     setMembers((prev) => prev.filter((_, i) => i !== idx));
   };
 
+  const addMember = () => {
+    setMembers((prev) => [...prev, { role: "", name: "", scope: "", lead: false }]);
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-base">현장조직 / 업무분장</CardTitle>
-        <Button variant="outline" size="sm"><Plus className="h-3 w-3 mr-1" /> 인원 추가</Button>
+        <Button variant="outline" size="sm" onClick={addMember}><Plus className="h-3 w-3 mr-1" /> 인원 추가</Button>
       </CardHeader>
       <CardContent>
         {members.length === 0 ? (
           <div className="py-16 text-center">
             <div className="text-sm font-semibold">등록된 인원이 없습니다</div>
             <div className="text-xs text-muted-foreground mt-1">인원 추가 버튼으로 현장조직을 구성하세요.</div>
+            <Button variant="outline" size="sm" className="mt-4" onClick={addMember}><Plus className="h-3 w-3 mr-1" /> 인원 추가</Button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

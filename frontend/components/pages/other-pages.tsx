@@ -8,14 +8,17 @@ import type { ProjectStatus } from "@/lib/types";
 import {
   Check, X, ArrowRight, ArrowLeft, Download,
   Pencil, Plus, ChevronRight, Loader2, CloudUpload, Lock, AlertTriangle,
+  Bell, Clock, GitBranch,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
-import { apiExport, apiStartPipeline, apiPipelineResult, apiSyncRevision } from "@/lib/api";
+import { apiExport, apiStartPipeline, apiPipelineResult, apiSyncRevision, apiGetProjects } from "@/lib/api";
 import type { PipelineResult } from "@/lib/api";
+import type { ProjectData } from "@/lib/storage";
+import { isAdmin as authIsAdmin } from "@/lib/auth";
 
 // ─── Conflicts ───
 export function ConflictsPage() {
@@ -166,7 +169,9 @@ export function ExportPage() {
   const [downloading, setDownloading] = useState(false);
   const [pipelineResult, setPipelineResult] = useState<PipelineResult | null>(null);
   const [generating, setGenerating] = useState(false);
-  const isAdmin = true; // TODO: 실제 권한 체크로 교체
+  // 권한은 인증 상태에서 읽음(localStorage 기반 → SSR 불일치 방지 위해 마운트 후 설정)
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => { setIsAdmin(authIsAdmin()); }, []);
 
   // 이전 파이프라인 결과 자동 로드
   useEffect(() => {
@@ -396,16 +401,140 @@ export function ProjectsPage() {
 }
 
 // ─── Notifications ───
+type Notif = {
+  id: string;
+  tone: "danger" | "warn" | "info";
+  icon: typeof Bell;
+  title: string;
+  desc: string;
+  projectId: string;
+  route: "review" | "conflicts" | "export";
+};
+
+// 프로젝트 상태에서 알림을 파생한다 (별도 백엔드 없이 클라이언트 계산):
+// 충돌 미해결 / 계약 기한 임박(30일 이내·만료) / 긴급 표시 / 수정집행 진행.
+function deriveNotifications(projects: ProjectData[], now: Date): Notif[] {
+  const out: Notif[] = [];
+  const DAY = 24 * 60 * 60 * 1000;
+  for (const p of projects) {
+    const data = p.extracted || p.revisions?.["0"] || null;
+
+    const conflicts = data?.conflicts?.length || 0;
+    if (conflicts > 0) {
+      out.push({ id: `${p.id}-conflict`, tone: "danger", icon: AlertTriangle,
+        title: `${p.name} — 값 충돌 ${conflicts}건`, desc: "견적서 간 값이 달라 해결이 필요합니다.",
+        projectId: p.id, route: "conflicts" });
+    }
+
+    const endRaw = data?.extracted?.endDate?.value;
+    if (endRaw) {
+      const m = String(endRaw).replace(/[.\/]/g, "-").match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (m) {
+        const end = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+        const days = Math.ceil((end.getTime() - now.getTime()) / DAY);
+        if (days < 0) {
+          out.push({ id: `${p.id}-overdue`, tone: "danger", icon: Clock,
+            title: `${p.name} — 계약 기한 경과`, desc: `종료일 ${m[1]}.${m[2]}.${m[3]} (${-days}일 지남)`,
+            projectId: p.id, route: "review" });
+        } else if (days <= 30) {
+          out.push({ id: `${p.id}-due`, tone: "warn", icon: Clock,
+            title: `${p.name} — 기한 임박 D-${days}`, desc: `종료일 ${m[1]}.${m[2]}.${m[3]}`,
+            projectId: p.id, route: "review" });
+        }
+      }
+    }
+
+    if (p.status === "urgent") {
+      out.push({ id: `${p.id}-urgent`, tone: "warn", icon: AlertTriangle,
+        title: `${p.name} — 긴급 처리 표시`, desc: "긴급으로 분류된 프로젝트입니다.",
+        projectId: p.id, route: "review" });
+    }
+
+    if ((p.maxRevision || 0) > 0) {
+      out.push({ id: `${p.id}-rev`, tone: "info", icon: GitBranch,
+        title: `${p.name} — ${p.maxRevision}차 수정집행`, desc: `현재 ${p.revision}차 작업 중`,
+        projectId: p.id, route: "review" });
+    }
+  }
+  // 위험 → 경고 → 정보 순 정렬
+  const rank = { danger: 0, warn: 1, info: 2 };
+  return out.sort((a, b) => rank[a.tone] - rank[b.tone]);
+}
+
+const TONE_STYLE: Record<Notif["tone"], { dot: string; badge: string }> = {
+  danger: { dot: "bg-red-500", badge: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" },
+  warn: { dot: "bg-amber-500", badge: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" },
+  info: { dot: "bg-blue-500", badge: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" },
+};
+
 export function NotificationsPage() {
+  const { setRoute, setProjectId } = useApp();
+  const [notifs, setNotifs] = useState<Notif[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { projects } = await apiGetProjects();
+        setNotifs(deriveNotifications(projects, new Date()));
+      } catch {
+        setNotifs([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const open = (n: Notif) => {
+    setProjectId(n.projectId);
+    setRoute(n.route);
+  };
+
   return (
     <div className="space-y-5">
-      <div><h1 className="text-xl font-bold">알림</h1><p className="text-sm text-muted-foreground mt-1">알림이 없습니다</p></div>
-      <Card>
-        <div className="py-16 text-center">
-          <div className="text-sm font-semibold">새로운 알림이 없습니다</div>
-          <div className="text-xs text-muted-foreground mt-1">프로젝트 기한, AI 추출 결과, 충돌 감지 등의 알림이 여기에 표시됩니다.</div>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold">알림</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {loading ? "확인 중…" : notifs.length > 0 ? `처리가 필요한 항목 ${notifs.length}건` : "알림이 없습니다"}
+          </p>
         </div>
-      </Card>
+        {!loading && notifs.length > 0 && (
+          <Badge variant="secondary" className="gap-1"><Bell className="h-3 w-3" /> {notifs.length}</Badge>
+        )}
+      </div>
+
+      {loading ? (
+        <Card><div className="py-16 text-center text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" /> 알림을 확인하는 중…</div></Card>
+      ) : notifs.length === 0 ? (
+        <Card>
+          <div className="py-16 text-center">
+            <Check className="mx-auto h-8 w-8 text-emerald-500 mb-3" />
+            <div className="text-sm font-semibold">새로운 알림이 없습니다</div>
+            <div className="text-xs text-muted-foreground mt-1">충돌 감지, 계약 기한 임박, 수정집행 진행 등의 알림이 여기에 표시됩니다.</div>
+          </div>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {notifs.map((n) => {
+            const Icon = n.icon;
+            const tone = TONE_STYLE[n.tone];
+            return (
+              <button key={n.id} onClick={() => open(n)}
+                className="flex w-full items-center gap-3 rounded-lg border bg-card px-4 py-3 text-left hover:bg-accent transition-colors">
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${tone.badge}`}>
+                  <Icon className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold truncate">{n.title}</div>
+                  <div className="text-xs text-muted-foreground truncate">{n.desc}</div>
+                </div>
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
