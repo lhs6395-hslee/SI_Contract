@@ -30,9 +30,3 @@ variable "single_nat_gateway" {
   type        = bool
   default     = true
 }
-
-variable "vpc_endpoint_security_group_id" {
-  description = "Security group ID for VPC interface endpoints (STS, Bedrock). Must allow HTTPS from VPC CIDR."
-  type        = string
-  default     = ""
-}

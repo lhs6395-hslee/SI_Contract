@@ -57,3 +57,42 @@ module "monitoring" {
   eks_cluster_name = module.eks.cluster_name
   alarm_email      = var.alarm_email
 }
+
+# ──────────────────────────────────────────────────────────────────────────────
+# VPC Interface Endpoints — IRSA(STS) + Bedrock from private subnets
+#
+# Fargate Pod는 private subnet에서 IRSA credential을 받으려면 STS에 도달해야 하고,
+# Bedrock 호출도 필요하다. networking↔security 순환 의존을 피하기 위해
+# (networking이 SG를, security가 vpc_id를 서로 요구) 환경 레벨에서 정의한다.
+# ──────────────────────────────────────────────────────────────────────────────
+resource "aws_vpc_endpoint" "sts" {
+  vpc_id              = module.networking.vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.sts"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = module.networking.private_subnet_ids
+  security_group_ids  = [module.security.vpc_endpoints_security_group_id]
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-sts-endpoint"
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
+}
+
+resource "aws_vpc_endpoint" "bedrock_runtime" {
+  vpc_id              = module.networking.vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.bedrock-runtime"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = module.networking.private_subnet_ids
+  security_group_ids  = [module.security.vpc_endpoints_security_group_id]
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-bedrock-runtime-endpoint"
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
+}

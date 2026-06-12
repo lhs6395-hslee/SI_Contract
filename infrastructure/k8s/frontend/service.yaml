@@ -7,6 +7,11 @@ metadata:
     app.kubernetes.io/name: frontend
     app.kubernetes.io/component: frontend
     app.kubernetes.io/part-of: si-contract
+  annotations:
+    # Next.js 프론트엔드엔 /api/health 라우트가 없음 — 루트(/)로 헬스체크
+    # (Service 어노테이션이 Ingress 전역 healthcheck-path보다 우선)
+    alb.ingress.kubernetes.io/healthcheck-path: "/"
+    alb.ingress.kubernetes.io/success-codes: "200"
 spec:
   type: ClusterIP
   selector:
