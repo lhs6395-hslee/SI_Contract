@@ -182,6 +182,133 @@ def extract_all_fields(documents: list[dict]) -> dict:
     return _parse_json(raw, fallback={"error": "추출 실패"})
 
 
+# ─── 탭별(섹션) 추출 ───────────────────────────────────────
+
+def _doc_block(documents: list[dict], limit: int = 4000) -> str:
+    return "\n\n".join(
+        f"[문서 {i+1}: {d['filename']}]\n{d['text'][:limit]}"
+        for i, d in enumerate(documents)
+    )
+
+
+COSTS_PROMPT = """당신은 GS네오텍 SI/MSP 집행계획서의 '산출내역(비목)' 추출 도우미입니다.
+아래 문서(견적서/품의서/검토서)에서 비목 항목을 추출하세요.
+
+{doc_block}
+
+규칙:
+- 경비/재료비/외주비 등 실제 비목만 추출. 카테고리(category)는 labor/material/outsourcing/expense 중 하나로 분류.
+- **퇴직금·보험료·국민연금·건강보험·산재보험·고용보험·인건비(급료)는 제외** (산출내역서 수식이 자동 계산).
+- **V.A.T.(부가세)는 제외**. 값이 전부 '-'(대시)인 행도 제외.
+- 금액은 원 단위 정수. 계약(contract)/집행(execution) 값이 구분되면 각각, 한쪽만 있으면 같은 값으로.
+
+다음 JSON으로만 응답:
+{{"items": [
+  {{"category": "expense", "name": "비목명", "spec": "규격", "unit": "단위",
+    "contractQty": 0, "contractPrice": 0, "contractAmount": 0,
+    "executionQty": 0, "executionPrice": 0, "executionAmount": 0,
+    "vendor": "공급처", "source": "출처", "confidence": "verified|guess"}}
+]}}
+항목이 없으면 {{"items": []}}."""
+
+
+PEOPLE_PROMPT = """당신은 GS네오텍 SI/MSP 집행계획서의 '투입 인원' 추출 도우미입니다.
+아래 문서에서 투입 인력 계획을 추출하세요.
+
+{doc_block}
+
+규칙:
+- monthlyRate는 **급료(월 인건비/원가 단가)** 를 사용. **견적서의 매출 단가는 절대 쓰지 마세요.** 불명확하면 0.
+- type은 자사 직접 투입이면 "직접", 외주/협력사면 "간접". company는 간접일 때 소속사명.
+- months는 길이 12의 0/1 배열(해당 월 투입 시 1). 기간만 있으면 시작~종료월을 1로.
+- grade는 직급(부장/차장/과장/대리/사원 등), role은 역할(PM/개발/운영 등).
+
+다음 JSON으로만 응답:
+{{"staffPlan": [
+  {{"name": "이름", "role": "역할", "grade": "직급", "type": "직접",
+    "company": "", "months": [0,0,0,0,0,0,0,0,0,0,0,0], "monthlyRate": 0, "source": "출처"}}
+]}}
+인원이 없으면 {{"staffPlan": []}}."""
+
+
+SCHEDULE_PROMPT = """당신은 GS네오텍 SI/MSP 집행계획서의 '공정(일정)' 추출 도우미입니다.
+아래 문서에서 작업 공정/단계 일정을 추출하세요.
+
+{doc_block}
+
+규칙:
+- startMonth/endMonth는 사업 시작월 기준 1부터 시작하는 정수(예: 1차월=1).
+- 단계명(name)은 분석/설계/개발/테스트/이행 등.
+
+다음 JSON으로만 응답:
+{{"schedule": [
+  {{"name": "단계명", "startMonth": 1, "endMonth": 3, "source": "출처"}}
+]}}
+공정이 없으면 {{"schedule": []}}."""
+
+
+RATES_PROMPT = """당신은 GS네오텍 SI/MSP 집행계획서의 '요율' 추출 도우미입니다.
+아래 문서에서 간접비율/일반관리비율/4대보험 요율을 추출하세요.
+
+{doc_block}
+
+규칙:
+- 값은 % 숫자(예: 1.9). 문서에 명시 없으면 0.
+- **간접+일반관리가 '합산'으로만 표기되어 개별 분리가 불가하면 둘 다 0**으로 두세요(빌더가 사내기준 적용).
+- 4대보험(국민연금/건강보험/고용보험/산재보험)은 명시된 요율만, 없으면 0.
+
+다음 JSON으로만 응답:
+{{"rates": {{
+  "indirectRate": {{"value": 0, "source": "출처"}},
+  "adminRate": {{"value": 0, "source": "출처"}},
+  "nationalPension": {{"value": 0, "source": "출처"}},
+  "healthInsurance": {{"value": 0, "source": "출처"}},
+  "employmentInsurance": {{"value": 0, "source": "출처"}},
+  "industrialAccident": {{"value": 0, "source": "출처"}}
+}}}}"""
+
+
+ORG_PROMPT = """당신은 GS네오텍 SI/MSP 집행계획서의 '수행 조직' 추출 도우미입니다.
+아래 문서에서 조직/역할 구성을 추출하세요.
+
+{doc_block}
+
+규칙:
+- lead는 총괄/책임자(PM 등)이면 true, 아니면 false.
+- scope는 담당 업무 범위.
+
+다음 JSON으로만 응답:
+{{"organization": [
+  {{"role": "역할", "name": "이름/조직", "scope": "담당범위", "lead": false}}
+]}}
+조직 정보가 없으면 {{"organization": []}}."""
+
+
+def extract_costs(documents: list[dict]) -> dict:
+    raw = _call_claude(COSTS_PROMPT.format(doc_block=_doc_block(documents)), max_tokens=2048, task_type="extract_costs")
+    return _parse_json(raw, fallback={"items": []})
+
+
+def extract_people(documents: list[dict]) -> dict:
+    raw = _call_claude(PEOPLE_PROMPT.format(doc_block=_doc_block(documents)), max_tokens=2048, task_type="extract_people")
+    return _parse_json(raw, fallback={"staffPlan": []})
+
+
+def extract_schedule(documents: list[dict]) -> dict:
+    raw = _call_claude(SCHEDULE_PROMPT.format(doc_block=_doc_block(documents)), max_tokens=1024, task_type="extract_schedule")
+    return _parse_json(raw, fallback={"schedule": []})
+
+
+def extract_rates(documents: list[dict]) -> dict:
+    raw = _call_claude(RATES_PROMPT.format(doc_block=_doc_block(documents)), max_tokens=512, task_type="extract_rates")
+    return _parse_json(raw, fallback={"rates": None})
+
+
+def extract_org(documents: list[dict]) -> dict:
+    raw = _call_claude(ORG_PROMPT.format(doc_block=_doc_block(documents)), max_tokens=1024, task_type="extract_org")
+    return _parse_json(raw, fallback={"organization": []})
+
+
 # ─── 교차 검증 ─────────────────────────────────────────────
 
 VALIDATE_PROMPT = """당신은 집행계획서 교차 검증 도우미입니다.

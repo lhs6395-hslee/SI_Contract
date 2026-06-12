@@ -429,6 +429,82 @@ async def extract_fields(files: list[UploadFile] = File(...)):
     return extract_all_fields(documents)
 
 
+# ─── 탭별(섹션) 추출 ───────────────────────────────────────
+
+async def _documents_from_request(files: list[UploadFile], stored_files: str) -> list[dict]:
+    """업로드 파일 또는 저장된 파일(stored_files JSON)에서 문서 텍스트를 로드한다."""
+    from services.file_parser import extract_text
+    documents: list[dict] = []
+
+    for f in files or []:
+        content = await f.read()
+        _check_upload_size(f.filename, content)
+        documents.append({"filename": f.filename, "text": extract_text(f.filename, content)})
+
+    if stored_files:
+        from services.s3_storage import get_file
+        try:
+            sf = json.loads(stored_files)
+        except (ValueError, TypeError):
+            sf = {}
+        project_id = sf.get("projectId")
+        revision = sf.get("revision")
+        for fn in sf.get("filenames", []):
+            if not project_id:
+                break
+            try:
+                content = get_file(project_id, fn, revision=revision)
+                documents.append({"filename": fn, "text": extract_text(fn, content)})
+            except FileNotFoundError:
+                continue
+
+    return documents
+
+
+def _tab_extract(section: str, documents: list[dict]) -> dict:
+    """섹션별 추출 — AI Service 사용 시 위임, 아니면 모놀리스 claude_api 직접 호출.
+    (ai-service는 granular 미구현 → fallback으로 모놀리스 함수 사용)"""
+    from services import claude_api
+    fn = {
+        "costs": claude_api.extract_costs,
+        "people": claude_api.extract_people,
+        "schedule": claude_api.extract_schedule,
+        "rates": claude_api.extract_rates,
+        "org": claude_api.extract_org,
+    }[section]
+    return fn(documents)
+
+
+@app.post("/api/extract-costs", dependencies=[Depends(require_auth)])
+async def extract_costs_endpoint(files: list[UploadFile] = File(default=[]), stored_files: str = Form(default="")):
+    """산출내역(비목) 추출."""
+    return _tab_extract("costs", await _documents_from_request(files, stored_files))
+
+
+@app.post("/api/extract-people", dependencies=[Depends(require_auth)])
+async def extract_people_endpoint(files: list[UploadFile] = File(default=[]), stored_files: str = Form(default="")):
+    """투입 인원 추출."""
+    return _tab_extract("people", await _documents_from_request(files, stored_files))
+
+
+@app.post("/api/extract-schedule", dependencies=[Depends(require_auth)])
+async def extract_schedule_endpoint(files: list[UploadFile] = File(default=[]), stored_files: str = Form(default="")):
+    """공정(일정) 추출."""
+    return _tab_extract("schedule", await _documents_from_request(files, stored_files))
+
+
+@app.post("/api/extract-rates", dependencies=[Depends(require_auth)])
+async def extract_rates_endpoint(files: list[UploadFile] = File(default=[]), stored_files: str = Form(default="")):
+    """요율 추출."""
+    return _tab_extract("rates", await _documents_from_request(files, stored_files))
+
+
+@app.post("/api/extract-org", dependencies=[Depends(require_auth)])
+async def extract_org_endpoint(files: list[UploadFile] = File(default=[]), stored_files: str = Form(default="")):
+    """수행 조직 추출."""
+    return _tab_extract("org", await _documents_from_request(files, stored_files))
+
+
 # ─── 교차 검증 ────────────────────────────────────────────
 
 @app.post("/api/validate", dependencies=[Depends(require_auth)])
