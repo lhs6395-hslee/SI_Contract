@@ -216,6 +216,14 @@ def _check_upload_size(filename: str, content: bytes) -> None:
         )
 
 
+def _content_disposition(filename: str) -> str:
+    """RFC 6266/5987 Content-Disposition — 한글 등 비-ASCII 파일명 안전 처리.
+    HTTP 헤더는 latin-1만 허용하므로 ASCII fallback + filename*=UTF-8'' 둘 다 제공."""
+    from urllib.parse import quote
+    ascii_name = filename.encode("ascii", "ignore").decode().strip() or "download.xlsx"
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}"
+
+
 def _safe_extract_text(filename: str, content: bytes) -> str:
     """파일 파싱 — 손상/빈/미지원 파일은 500 대신 422로 응답."""
     from services.file_parser import extract_text
@@ -654,10 +662,11 @@ async def pipeline_result(project_id: str):
             return Response(
                 content=content,
                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+                # HTTP 헤더는 latin-1만 허용 → 한글 파일명은 RFC 6266/5987 filename* 사용.
+                headers={"Content-Disposition": _content_disposition(filename)},
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("pipeline result S3 fetch 실패 (key=%r): %s: %s", output_key, type(e).__name__, e)
 
     # 로컬 fallback (개발환경)
     local_path = Path(output_key)
