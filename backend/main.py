@@ -527,48 +527,52 @@ async def _documents_from_request(files: list[UploadFile], stored_files: str) ->
     return documents
 
 
-def _tab_extract(section: str, documents: list[dict]) -> dict:
-    """섹션별 추출 — AI Service 사용 시 위임, 아니면 모놀리스 claude_api 직접 호출.
-    (ai-service는 granular 미구현 → fallback으로 모놀리스 함수 사용)"""
+async def _tab_extract(section: str, documents: list[dict]) -> dict:
+    """섹션별 추출 — USE_AI_SERVICE면 ai-service로 위임, 아니면 모놀리스(ai_core) 직접 호출.
+
+    ai-service는 backend와 동일한 ai_core를 쓰므로 결과가 같다.
+    """
+    if USE_AI_SERVICE:
+        import httpx
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                f"{AI_SERVICE_URL}/extract-{section}",
+                json={"documents": documents}, headers=_internal_headers(),
+            )
+            return resp.json()
+
     from services import claude_api
-    fn = {
-        "costs": claude_api.extract_costs,
-        "people": claude_api.extract_people,
-        "schedule": claude_api.extract_schedule,
-        "rates": claude_api.extract_rates,
-        "org": claude_api.extract_org,
-    }[section]
-    return fn(documents)
+    return claude_api.extract_section(section, documents)
 
 
 @app.post("/api/extract-costs", dependencies=[Depends(require_auth)])
 async def extract_costs_endpoint(files: list[UploadFile] = File(default=[]), stored_files: str = Form(default="")):
     """산출내역(비목) 추출."""
-    return _tab_extract("costs", await _documents_from_request(files, stored_files))
+    return await _tab_extract("costs", await _documents_from_request(files, stored_files))
 
 
 @app.post("/api/extract-people", dependencies=[Depends(require_auth)])
 async def extract_people_endpoint(files: list[UploadFile] = File(default=[]), stored_files: str = Form(default="")):
     """투입 인원 추출."""
-    return _tab_extract("people", await _documents_from_request(files, stored_files))
+    return await _tab_extract("people", await _documents_from_request(files, stored_files))
 
 
 @app.post("/api/extract-schedule", dependencies=[Depends(require_auth)])
 async def extract_schedule_endpoint(files: list[UploadFile] = File(default=[]), stored_files: str = Form(default="")):
     """공정(일정) 추출."""
-    return _tab_extract("schedule", await _documents_from_request(files, stored_files))
+    return await _tab_extract("schedule", await _documents_from_request(files, stored_files))
 
 
 @app.post("/api/extract-rates", dependencies=[Depends(require_auth)])
 async def extract_rates_endpoint(files: list[UploadFile] = File(default=[]), stored_files: str = Form(default="")):
     """요율 추출."""
-    return _tab_extract("rates", await _documents_from_request(files, stored_files))
+    return await _tab_extract("rates", await _documents_from_request(files, stored_files))
 
 
 @app.post("/api/extract-org", dependencies=[Depends(require_auth)])
 async def extract_org_endpoint(files: list[UploadFile] = File(default=[]), stored_files: str = Form(default="")):
     """수행 조직 추출."""
-    return _tab_extract("org", await _documents_from_request(files, stored_files))
+    return await _tab_extract("org", await _documents_from_request(files, stored_files))
 
 
 # ─── 교차 검증 ────────────────────────────────────────────
@@ -868,11 +872,26 @@ async def chat(request: StarletteRequest):
 
 {f"[현재 프로젝트 데이터]{chr(10)}{context}" if context else "[프로젝트 데이터 없음 — 프로젝트를 선택해 주세요]"}"""
 
-    from services.claude_api import invoke_bedrock
     user_id = request.headers.get("X-User-Id", "anonymous")
+    user_message = messages[-1]["content"]
+
+    # 순수 추론은 USE_AI_SERVICE면 ai-service로 위임(컨텍스트 구성은 backend 책임).
+    # ai-service는 backend와 동일 ai_core를 쓰므로 응답 형식이 같다.
+    if USE_AI_SERVICE:
+        import httpx
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                f"{AI_SERVICE_URL}/chat",
+                json={"message": user_message, "system": system_prompt,
+                      "max_tokens": 1024, "user_id": user_id},
+                headers=_internal_headers(),
+            )
+            return resp.json()
+
+    from services.claude_api import invoke_bedrock
     # AIUnavailableError는 전역 핸들러가 502 {"error","code":"AI_UNAVAILABLE"}로 래핑
     result = invoke_bedrock(
-        messages[-1]["content"], max_tokens=1024, system=system_prompt,
+        user_message, max_tokens=1024, system=system_prompt,
         task_type="chat", user_id=user_id,
     )
 

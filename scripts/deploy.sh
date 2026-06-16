@@ -40,6 +40,22 @@ build_backend() {
   echo "✅ Backend ${VERSION} pushed"
 }
 
+build_ai_service() {
+  echo "🔨 AI Service 빌드 ($VERSION)..."
+  # 빌드 컨텍스트는 repo root — backend/services/ai_core.py 공유 복사 위해.
+  docker build --platform linux/amd64 \
+    -f services/ai-service/Dockerfile \
+    -t ${REGISTRY}/si-contract/ai-service:${VERSION} \
+    . || { echo "❌ AI Service 빌드 실패"; exit 1; }
+  docker push ${REGISTRY}/si-contract/ai-service:${VERSION} || { echo "❌ AI Service ECR push 실패"; exit 1; }
+  echo "✅ AI Service ${VERSION} pushed"
+}
+
+deploy_ai_service() {
+  kubectl set image deployment/ai-service ai-service=${REGISTRY}/si-contract/ai-service:${VERSION} -n $NAMESPACE
+  echo "🚀 AI Service ${VERSION} 배포됨"
+}
+
 deploy_frontend() {
   kubectl set image deployment/frontend frontend=${REGISTRY}/si-contract/frontend:${VERSION} -n $NAMESPACE
   kubectl set env deployment/frontend AWS_REGION=$REGION -n $NAMESPACE
@@ -65,6 +81,10 @@ case "${1:-all}" in
   backend)
     build_backend && deploy_backend && wait_ready backend
     ;;
+  ai-service)
+    # MSA 분리 활성화(USE_AI_SERVICE=true) 시에만 사용. 평소 모놀리스에선 미배포.
+    build_ai_service && deploy_ai_service && wait_ready ai-service
+    ;;
   all)
     build_frontend & FE_PID=$!
     build_backend  & BE_PID=$!
@@ -76,7 +96,7 @@ case "${1:-all}" in
     wait_ready backend
     ;;
   *)
-    echo "Usage: $0 [frontend|backend|all]"
+    echo "Usage: $0 [frontend|backend|ai-service|all]"
     exit 1
     ;;
 esac
