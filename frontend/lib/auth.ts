@@ -75,7 +75,14 @@ export async function loginWithBasicAuth(username: string, password: string): Pr
   });
   if (!res.ok) return null;
   const data = await res.json();
-  const user: AuthUser = { email: username, name: "Admin", role: "admin", provider: "basic" };
+  // role은 백엔드 응답을 단일 출처로 사용 (계정 격리 — 하드코딩 금지).
+  const u = data.user || {};
+  const user: AuthUser = {
+    email: u.email || username,
+    name: u.role === "admin" ? "Admin" : (u.email || username),
+    role: u.role === "admin" ? "admin" : "user",
+    provider: "basic",
+  };
   setAuth(data.token, user);
   return user;
 }

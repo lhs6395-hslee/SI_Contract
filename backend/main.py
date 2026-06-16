@@ -38,7 +38,7 @@ from services.project_store import (
     get_edit_lock_status,
     list_projects_cached,
 )
-from services.cognito_auth import require_auth
+from services.cognito_auth import require_auth, resolve_role
 from services import cognito_auth as _cognito_auth_module
 from services.claude_api import AIUnavailableError
 
@@ -290,37 +290,59 @@ async def health():
 
 # ─── 프로젝트별 파일 저장 ─────────────────────────────────
 
-@app.post("/api/files/{project_id}/upload", dependencies=[Depends(require_auth)])
+def _project_owner(project_id: str, current_user: dict) -> str:
+    """소유권 확인 후 파일 저장에 쓸 owner(email) 반환.
+
+    기존 프로젝트면 인가 + 저장된 owner 사용, 신규(아직 프로젝트 레코드 없음)면
+    현재 사용자를 owner로 간주(업로드가 프로젝트 생성보다 먼저 올 수 있음).
+    """
+    project = load_project(project_id)
+    if not project:
+        return current_user.get("email")
+    if current_user.get("role") != "admin":
+        owner = project.get("owner") or ADMIN_EMAIL
+        if owner != current_user.get("email"):
+            raise HTTPException(404, "Project not found")
+    return project.get("owner") or current_user.get("email")
+
+
+@app.post("/api/files/{project_id}/upload")
 async def upload_project_files(
     project_id: str,
     files: list[UploadFile] = File(...),
     revision: Optional[int] = None,
+    current_user: dict = Depends(require_auth),
 ):
     """프로젝트에 파일 저장 (S3 또는 로컬). revision 지정 시 rev{N}/ 경로에 저장."""
+    owner = _project_owner(project_id, current_user)
     saved = []
     for f in files:
         content = await f.read()
         _check_upload_size(f.filename, content)
-        result = s3_upload(project_id, f.filename, content, revision=revision)
+        result = s3_upload(project_id, f.filename, content, revision=revision, owner=owner)
         saved.append({"filename": result["filename"], "size": result["size"]})
     return {"project_id": project_id, "files": saved}
 
 
-@app.get("/api/files/{project_id}", dependencies=[Depends(require_auth)])
-async def list_project_files(project_id: str, revision: Optional[int] = None):
+@app.get("/api/files/{project_id}")
+async def list_project_files(project_id: str, revision: Optional[int] = None,
+                             current_user: dict = Depends(require_auth)):
     """프로젝트의 저장된 파일 목록. revision 지정 시 해당 차수 파일만."""
-    files = s3_list(project_id, revision=revision)
+    owner = _project_owner(project_id, current_user)
+    files = s3_list(project_id, revision=revision, owner=owner)
     return {"project_id": project_id, "files": files}
 
 
-@app.get("/api/files/{project_id}/{filename}", dependencies=[Depends(require_auth)])
-async def download_project_file(project_id: str, filename: str, revision: Optional[int] = None):
+@app.get("/api/files/{project_id}/{filename}")
+async def download_project_file(project_id: str, filename: str, revision: Optional[int] = None,
+                                current_user: dict = Depends(require_auth)):
     """프로젝트 파일 다운로드. revision 지정 시 해당 차수 경로 우선 탐색."""
     # Path traversal 방지
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
+    owner = _project_owner(project_id, current_user)
     try:
-        content = s3_get(project_id, filename, revision=revision)
+        content = s3_get(project_id, filename, revision=revision, owner=owner)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -335,12 +357,14 @@ async def download_project_file(project_id: str, filename: str, revision: Option
     return FileResponse(str(file_path), filename=filename)
 
 
-@app.delete("/api/files/{project_id}/{filename}", dependencies=[Depends(require_auth)])
-async def delete_project_file(project_id: str, filename: str, revision: Optional[int] = None):
+@app.delete("/api/files/{project_id}/{filename}")
+async def delete_project_file(project_id: str, filename: str, revision: Optional[int] = None,
+                              current_user: dict = Depends(require_auth)):
     """프로젝트 파일 삭제."""
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
-    s3_delete(project_id, filename, revision=revision)
+    owner = _project_owner(project_id, current_user)
+    s3_delete(project_id, filename, revision=revision, owner=owner)
     return {"deleted": filename}
 
 
@@ -375,14 +399,16 @@ async def parse_pdf_images(file: UploadFile = File(...)):
     return {"filename": file.filename, "images": images}
 
 
-@app.post("/api/parse-stored/{project_id}/{filename}", dependencies=[Depends(require_auth)])
-async def parse_stored_file(project_id: str, filename: str, revision: Optional[int] = None):
+@app.post("/api/parse-stored/{project_id}/{filename}")
+async def parse_stored_file(project_id: str, filename: str, revision: Optional[int] = None,
+                            current_user: dict = Depends(require_auth)):
     """저장된 프로젝트 파일에서 텍스트 추출. revision 지정 시 해당 차수 경로 우선."""
     from services.file_parser import extract_text
     from services.s3_storage import get_file
 
+    owner = _project_owner(project_id, current_user)
     try:
-        content = get_file(project_id, filename, revision=revision)
+        content = get_file(project_id, filename, revision=revision, owner=owner)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -390,14 +416,16 @@ async def parse_stored_file(project_id: str, filename: str, revision: Optional[i
     return {"filename": filename, "text": text}
 
 
-@app.post("/api/parse-stored-images/{project_id}/{filename}", dependencies=[Depends(require_auth)])
-async def parse_stored_pdf_images(project_id: str, filename: str, revision: Optional[int] = None):
+@app.post("/api/parse-stored-images/{project_id}/{filename}")
+async def parse_stored_pdf_images(project_id: str, filename: str, revision: Optional[int] = None,
+                                  current_user: dict = Depends(require_auth)):
     """저장된 PDF를 이미지로 변환. revision 지정 시 해당 차수 경로 우선."""
     from services.file_parser import extract_pdf_images
     from services.s3_storage import get_file
 
+    owner = _project_owner(project_id, current_user)
     try:
-        content = get_file(project_id, filename, revision=revision)
+        content = get_file(project_id, filename, revision=revision, owner=owner)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found")
     images = extract_pdf_images(content, max_pages=5)
@@ -579,14 +607,17 @@ async def export_excel(data: dict):
 
 # ─── 하네스 파이프라인 ────────────────────────────────────
 
-@app.post("/api/pipeline/start", dependencies=[Depends(require_auth)])
-async def start_pipeline(request: StarletteRequest):
+@app.post("/api/pipeline/start")
+async def start_pipeline(request: StarletteRequest, current_user: dict = Depends(require_auth)):
     """확정된 데이터로 파이프라인 실행: Sprint_Contract 생성 → Executor → (Reviewer)."""
     from services.contract_builder import build_sprint_contract
     from services.orchestrator import run_pipeline
 
     data = _sanitize_surrogates(await _safe_json_body(request))
     project_id = _validate_project_id(data.get("projectId", f"p_{int(time.time() * 1000)}"))
+    # 기존 프로젝트면 소유권 확인(신규 project_id면 통과 — 본인이 생성).
+    if load_project(project_id):
+        _assert_project_access(project_id, current_user)
     extracted_data = data.get("extractedData", {})
     if not extracted_data:
         raise HTTPException(status_code=422, detail="extractedData가 필요합니다")
@@ -646,9 +677,11 @@ async def pipeline_status(project_id: str):
     return state
 
 
-@app.get("/api/pipeline/{project_id}/result", dependencies=[Depends(require_auth)])
-async def pipeline_result(project_id: str):
+@app.get("/api/pipeline/{project_id}/result")
+async def pipeline_result(project_id: str, current_user: dict = Depends(require_auth)):
     """완성된 집행계획서 엑셀 다운로드 (S3 우선, 로컬 fallback)."""
+    if load_project(project_id):
+        _assert_project_access(project_id, current_user)
     state = load_pipeline_state(project_id)
     if not state or not state.get("output_file"):
         raise HTTPException(404, "Result not found")
@@ -686,55 +719,74 @@ async def pipeline_result(project_id: str):
 
 # ─── 프로젝트 CRUD ──────────────────────────────────────────
 
-@app.get("/api/projects", dependencies=[Depends(require_auth)])
-async def get_projects():
-    """프로젝트 목록 (extracted 포함, revisions 제외).
+def _assert_project_access(project_id: str, current_user: dict) -> dict:
+    """프로젝트 로드 + owner 인가. 소유자/admin이 아니면 404(존재 사실도 숨김).
 
-    버전 스탬프 캐시 — write 시 버전 증가로 모든 uvicorn 워커에서
-    read-after-write 일관성 보장 (project_store.list_projects_cached).
+    레거시(owner 없음) 레코드는 admin 소유로 간주 → 일반 사용자 접근 차단.
     """
-    return {"projects": list_projects_cached()}
-
-
-@app.get("/api/projects/{project_id}", dependencies=[Depends(require_auth)])
-async def get_project(project_id: str):
-    """프로젝트 상세 (extracted 포함)."""
     project = load_project(project_id)
     if not project:
+        raise HTTPException(404, "Project not found")
+    if current_user.get("role") == "admin":
+        return project
+    owner = project.get("owner") or ADMIN_EMAIL
+    if owner != current_user.get("email"):
         raise HTTPException(404, "Project not found")
     return project
 
 
-@app.post("/api/projects", dependencies=[Depends(require_auth)])
-async def create_project(request: StarletteRequest):
-    """프로젝트 생성/수정 (upsert)."""
+@app.get("/api/projects")
+async def get_projects(current_user: dict = Depends(require_auth)):
+    """프로젝트 목록 (extracted 포함, revisions 제외) — 본인 소유만(admin은 전체).
+
+    버전 스탬프 캐시 — write 시 버전 증가로 모든 uvicorn 워커에서
+    read-after-write 일관성 보장 (project_store.list_projects_cached).
+    """
+    return {"projects": list_projects_cached(
+        owner=current_user.get("email"), is_admin=current_user.get("role") == "admin")}
+
+
+@app.get("/api/projects/{project_id}")
+async def get_project(project_id: str, current_user: dict = Depends(require_auth)):
+    """프로젝트 상세 (extracted 포함) — 소유자/admin만."""
+    return _assert_project_access(project_id, current_user)
+
+
+@app.post("/api/projects")
+async def create_project(request: StarletteRequest, current_user: dict = Depends(require_auth)):
+    """프로젝트 생성/수정 (upsert) — 기존 건은 소유자/admin만 수정 가능."""
     data = _sanitize_surrogates(await _safe_json_body(request))
     if "id" not in data:
         data["id"] = f"p_{int(time.time() * 1000)}"
     _validate_project_id(data["id"])
-    saved = save_project(data)
+    # 기존 프로젝트면 소유권 확인(없으면 신규 생성 — 통과).
+    if load_project(data["id"]):
+        _assert_project_access(data["id"], current_user)
+    saved = save_project(data, owner=current_user.get("email"))
     return saved
 
 
-@app.patch("/api/projects/{project_id}/revision/{revision}", dependencies=[Depends(require_auth)])
-async def patch_project_revision(project_id: str, revision: int, request: StarletteRequest):
-    """현재 차수 데이터만 머지 저장 — 다른 차수는 그대로 유지."""
+@app.patch("/api/projects/{project_id}/revision/{revision}")
+async def patch_project_revision(project_id: str, revision: int, request: StarletteRequest,
+                                 current_user: dict = Depends(require_auth)):
+    """현재 차수 데이터만 머지 저장 — 다른 차수는 그대로 유지. 소유자/admin만."""
     _validate_project_id(project_id)
+    existing = _assert_project_access(project_id, current_user)
     data = _sanitize_surrogates(await _safe_json_body(request))
-    existing = load_project(project_id) or {}
     revisions = existing.get("revisions", {})
     revisions[str(revision)] = data.get("extractedData", data)
     existing["id"] = project_id
     existing["revisions"] = revisions
     existing["revision"] = revision
     existing["extracted"] = data.get("extractedData", data)
-    saved = save_project(existing)
+    saved = save_project(existing, owner=current_user.get("email"))
     return saved
 
 
-@app.delete("/api/projects/{project_id}", dependencies=[Depends(require_auth)])
-async def remove_project(project_id: str):
-    """프로젝트 삭제."""
+@app.delete("/api/projects/{project_id}")
+async def remove_project(project_id: str, current_user: dict = Depends(require_auth)):
+    """프로젝트 삭제 — 소유자/admin만."""
+    _assert_project_access(project_id, current_user)
     delete_project(project_id)
     return {"deleted": project_id}
 
@@ -923,7 +975,7 @@ async def auth_login(data: dict):
 
     if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
         token = _create_basic_token(username)
-        return {"token": token, "user": {"email": username, "role": "admin"}}
+        return {"token": token, "user": {"email": username, "role": resolve_role(username)}}
 
     raise HTTPException(401, "Invalid credentials")
 
@@ -941,10 +993,10 @@ async def auth_me(request: StarletteRequest):
     payload = verify_cognito_token(token)
     if payload:
         email = payload.get("email", payload.get("cognito:username", ""))
-        return {"email": email, "role": "admin", "provider": "cognito"}
+        return {"email": email, "role": resolve_role(email), "provider": "cognito"}
 
     username = _verify_basic_token(token)
     if username:
-        return {"email": username, "role": "admin", "provider": "basic"}
+        return {"email": username, "role": resolve_role(username), "provider": "basic"}
 
     raise HTTPException(401, "Invalid token")

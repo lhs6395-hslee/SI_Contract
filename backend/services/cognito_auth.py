@@ -11,6 +11,15 @@ from fastapi import HTTPException, Request
 
 logger = logging.getLogger("si-contract")
 
+# 계정 격리 — admin은 전체 프로젝트/파일 접근, 일반 사용자는 본인 owner 것만.
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "lhs6395@gsneotek.com")
+
+
+def resolve_role(email: str) -> str:
+    """이메일로 role 판별. admin 계정만 'admin', 나머지는 'user'."""
+    return "admin" if (email or "").lower() == ADMIN_EMAIL.lower() else "user"
+
+
 COGNITO_USER_POOL_ID = os.getenv("COGNITO_USER_POOL_ID", "ap-northeast-2_Wz3a01s3w")
 COGNITO_CLIENT_ID = os.getenv("COGNITO_CLIENT_ID", "6aarjh4rm676q8c61ll8li24h9")
 COGNITO_REGION = COGNITO_USER_POOL_ID.split("_")[0] if "_" in COGNITO_USER_POOL_ID else "ap-northeast-2"
@@ -100,14 +109,12 @@ async def require_auth(request: Request) -> dict:
 
     payload = verify_cognito_token(token)
     if payload:
-        return {
-            "email": payload.get("email", payload.get("cognito:username", "")),
-            "provider": "cognito",
-        }
+        email = payload.get("email", payload.get("cognito:username", ""))
+        return {"email": email, "role": resolve_role(email), "provider": "cognito"}
 
     if basic_token_verifier:
         username = basic_token_verifier(token)
         if username:
-            return {"email": username, "provider": "basic"}
+            return {"email": username, "role": resolve_role(username), "provider": "basic"}
 
     raise HTTPException(401, "Invalid token")

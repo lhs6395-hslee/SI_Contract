@@ -22,11 +22,29 @@ export default function AuthComplete() {
     const name = getCookie("si_pending_name");
 
     if (token) {
-      setAuth(token, { email, name: name || email, role: "user", provider: "cognito" });
-      deleteCookie("si_pending_token");
-      deleteCookie("si_pending_email");
-      deleteCookie("si_pending_name");
-      router.replace("/");
+      // role은 백엔드가 단일 출처로 판별 (계정 격리 — admin 여부 확정).
+      const FASTAPI = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://localhost:8000";
+      (async () => {
+        let role: "admin" | "user" = "user";
+        let resolvedEmail = email;
+        try {
+          const res = await fetch(`${FASTAPI}/api/auth/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const me = await res.json();
+            role = me.role === "admin" ? "admin" : "user";
+            resolvedEmail = me.email || email;
+          }
+        } catch {
+          /* 네트워크 실패 시 안전 기본값(user) 유지 */
+        }
+        setAuth(token, { email: resolvedEmail, name: name || resolvedEmail, role, provider: "cognito" });
+        deleteCookie("si_pending_token");
+        deleteCookie("si_pending_email");
+        deleteCookie("si_pending_name");
+        router.replace("/");
+      })();
     } else {
       router.replace("/login?error=no_token");
     }

@@ -10,6 +10,8 @@ import time
 from decimal import Decimal
 from typing import Optional
 
+from services.cognito_auth import ADMIN_EMAIL
+
 DYNAMODB_TABLE = os.getenv("DYNAMODB_TABLE", "")
 DYNAMODB_PIPELINE_TABLE = os.getenv("DYNAMODB_PIPELINE_TABLE", DYNAMODB_TABLE)
 
@@ -91,15 +93,29 @@ def _get_projects_version():
     return _memory_version
 
 
-def list_projects_cached() -> list[dict]:
-    """버전 일치 시 캐시 반환, 불일치 시 단일 scan으로 갱신."""
+def list_projects_cached(owner: Optional[str] = None, is_admin: bool = False) -> list[dict]:
+    """버전 일치 시 캐시 반환, 불일치 시 단일 scan으로 갱신.
+
+    캐시는 전체 scan 결과(사용자 무관)를 유지하고, owner 필터는 read 이후
+    메모리에서 적용한다 — scan 비용을 사용자별로 늘리지 않으면서 목록을 격리.
+
+    - is_admin=True: 전체 반환.
+    - owner 지정: owner가 일치하는 것만. owner 없는 레거시 레코드는 admin 소유로 간주
+      (일반 사용자에겐 안 보임).
+    - owner=None & not admin: 빈 목록(인증 없는 호출 방어).
+    """
     version = _get_projects_version()
     if _list_cache["data"] is not None and _list_cache["version"] == version:
-        return _list_cache["data"]
-    data = list_projects_full()
-    _list_cache["data"] = data
-    _list_cache["version"] = version
-    return data
+        data = _list_cache["data"]
+    else:
+        data = list_projects_full()
+        _list_cache["data"] = data
+        _list_cache["version"] = version
+    if is_admin:
+        return data
+    if not owner:
+        return []
+    return [p for p in data if (p.get("owner") or ADMIN_EMAIL) == owner]
 
 
 # DynamoDB 리소스/테이블 생성은 비싸므로 재사용하되, **boto3 resource는 thread-safe가
@@ -138,8 +154,12 @@ def is_dynamo_enabled() -> bool:
 
 # ─── 프로젝트 CRUD ───────────────────────────────────────────
 
-def save_project(project_data: dict) -> dict:
-    """프로젝트 저장 (upsert). id 필수."""
+def save_project(project_data: dict, owner: Optional[str] = None) -> dict:
+    """프로젝트 저장 (upsert). id 필수.
+
+    owner: 최초 생성 시 소유자(email)를 기록. 업데이트 시에는 기존 owner를
+    보존한다(남이 덮어쓰며 소유권을 탈취하지 못하게). owner=None이면 손대지 않음.
+    """
     project_id = project_data["id"]
     if not project_data.get("name"):
         project_data["name"] = _derive_field(project_data, "projectName") or ""
@@ -166,6 +186,23 @@ def save_project(project_data: dict) -> dict:
         else:
             existing_ca = (_projects.get(project_id) or {}).get("created_at")
         project_data["created_at"] = existing_ca or datetime.now(timezone.utc).isoformat()
+
+    # owner: 최초 생성 시에만 기록, 이후 기존 값 보존(소유권 탈취 방지).
+    existing_owner = None
+    if is_dynamo_enabled():
+        try:
+            resp = _dynamo_project_table().get_item(
+                Key={"project_id": project_id}, ProjectionExpression="#o",
+                ExpressionAttributeNames={"#o": "owner"},
+            )
+            existing_owner = resp.get("Item", {}).get("owner")
+        except Exception:
+            pass
+    else:
+        existing_owner = (_projects.get(project_id) or {}).get("owner")
+    resolved_owner = existing_owner or owner
+    if resolved_owner:
+        project_data["owner"] = resolved_owner
 
     if is_dynamo_enabled():
         table = _dynamo_project_table()

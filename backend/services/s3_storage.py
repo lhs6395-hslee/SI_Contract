@@ -32,11 +32,16 @@ def is_s3_enabled() -> bool:
     return bool(S3_FILES_BUCKET)
 
 
-def _project_prefix(project_id: str, revision: Optional[int] = None) -> str:
-    """S3 key prefix. revision이 있으면 rev{N}/ 하위 경로."""
+def _project_prefix(project_id: str, revision: Optional[int] = None, owner: Optional[str] = None) -> str:
+    """S3 key prefix. 계정별 폴더 분리: owner 지정 시 projects/{owner}/{id}/...
+
+    owner=None이면 레거시 경로(projects/{id}/...) — 마이그레이션 전 데이터 및
+    하위호환 fallback용. revision이 있으면 rev{N}/ 하위 경로.
+    """
+    base = f"projects/{owner}/{project_id}" if owner else f"projects/{project_id}"
     if revision is not None:
-        return f"projects/{project_id}/rev{revision}/"
-    return f"projects/{project_id}/"
+        return f"{base}/rev{revision}/"
+    return f"{base}/"
 
 
 # ─── 로컬 헬퍼 ──────────────────────────────────────────────
@@ -52,10 +57,11 @@ def _local_project_dir(project_id: str, revision: Optional[int] = None) -> Path:
 
 # ─── 공개 API ────────────────────────────────────────────────
 
-def upload_file(project_id: str, filename: str, content: bytes, revision: Optional[int] = None) -> dict:
-    """파일 업로드. S3 또는 로컬 저장."""
+def upload_file(project_id: str, filename: str, content: bytes, revision: Optional[int] = None,
+                owner: Optional[str] = None) -> dict:
+    """파일 업로드. S3 또는 로컬 저장. owner 지정 시 계정별 폴더에 저장."""
     if is_s3_enabled():
-        key = f"{_project_prefix(project_id, revision)}{filename}"
+        key = f"{_project_prefix(project_id, revision, owner)}{filename}"
         _s3_client().put_object(
             Bucket=S3_FILES_BUCKET,
             Key=key,
@@ -69,19 +75,29 @@ def upload_file(project_id: str, filename: str, content: bytes, revision: Option
     return {"filename": filename, "size": len(content), "storage": "local"}
 
 
-def list_files(project_id: str, revision: Optional[int] = None) -> list[dict]:
-    """프로젝트 파일 목록. revision이 있으면 해당 차수만, 없으면 전체(루트 레벨만)."""
+def list_files(project_id: str, revision: Optional[int] = None, owner: Optional[str] = None) -> list[dict]:
+    """프로젝트 파일 목록. revision이 있으면 해당 차수만, 없으면 전체(루트 레벨만).
+
+    owner 지정 시 계정별 폴더 우선 조회, 비어 있으면 레거시 경로 fallback(하위호환).
+    """
     if is_s3_enabled():
         s3 = _s3_client()
-        prefix = _project_prefix(project_id, revision)
-        resp = s3.list_objects_v2(Bucket=S3_FILES_BUCKET, Prefix=prefix)
-        files = []
-        for obj in resp.get("Contents", []):
-            name = obj["Key"].removeprefix(prefix)
-            # 하위 디렉토리 항목 제외 (revision=None일 때 rev0/, rev1/ 등 스킵)
-            if name and not name.startswith(".") and "/" not in name:
-                files.append({"filename": name, "size": obj["Size"]})
-        return files
+        # owner 경로 우선, 결과 없으면 레거시(owner 없는) 경로 fallback
+        prefixes = []
+        if owner:
+            prefixes.append(_project_prefix(project_id, revision, owner))
+        prefixes.append(_project_prefix(project_id, revision, None))
+        for prefix in prefixes:
+            resp = s3.list_objects_v2(Bucket=S3_FILES_BUCKET, Prefix=prefix)
+            files = []
+            for obj in resp.get("Contents", []):
+                name = obj["Key"].removeprefix(prefix)
+                # 하위 디렉토리 항목 제외 (revision=None일 때 rev0/, rev1/ 등 스킵)
+                if name and not name.startswith(".") and "/" not in name:
+                    files.append({"filename": name, "size": obj["Size"]})
+            if files:
+                return files
+        return []
 
     # 로컬 fallback
     project_dir = _local_project_dir(project_id, revision)
@@ -92,19 +108,21 @@ def list_files(project_id: str, revision: Optional[int] = None) -> list[dict]:
     return files
 
 
-def get_file(project_id: str, filename: str, revision: Optional[int] = None) -> bytes:
+def get_file(project_id: str, filename: str, revision: Optional[int] = None,
+             owner: Optional[str] = None) -> bytes:
     """파일 다운로드. NFC/NFD 인코딩 둘 다 시도.
-    revision 지정 시 해당 경로 먼저, 없으면 루트 경로 fallback (하위호환).
+    owner 경로 우선 → 레거시 경로 fallback, revision 경로 우선 → 루트 fallback (하위호환).
     """
     if is_s3_enabled():
         import botocore.exceptions
         s3 = _s3_client()
 
-        # 시도할 prefix 목록: revision 지정 → rev 경로 우선, 루트 fallback
+        # 시도할 prefix 목록: (owner 경로, 레거시 경로) × (rev 경로, 루트)
         prefixes_to_try = []
-        if revision is not None:
-            prefixes_to_try.append(_project_prefix(project_id, revision))
-        prefixes_to_try.append(_project_prefix(project_id, None))
+        for own in ([owner, None] if owner else [None]):
+            if revision is not None:
+                prefixes_to_try.append(_project_prefix(project_id, revision, own))
+            prefixes_to_try.append(_project_prefix(project_id, None, own))
 
         for prefix in prefixes_to_try:
             for form in ("NFC", "NFD"):
@@ -133,13 +151,16 @@ def get_file(project_id: str, filename: str, revision: Optional[int] = None) -> 
     raise FileNotFoundError(f"{project_id}/{filename}")
 
 
-def delete_file(project_id: str, filename: str, revision: Optional[int] = None) -> None:
-    """파일 삭제."""
+def delete_file(project_id: str, filename: str, revision: Optional[int] = None,
+                owner: Optional[str] = None) -> None:
+    """파일 삭제. owner 경로 + 레거시 경로 둘 다 삭제(마이그레이션 잔존 방지)."""
     if is_s3_enabled():
-        _s3_client().delete_object(
-            Bucket=S3_FILES_BUCKET,
-            Key=f"{_project_prefix(project_id, revision)}{filename}",
-        )
+        s3 = _s3_client()
+        for own in ([owner, None] if owner else [None]):
+            s3.delete_object(
+                Bucket=S3_FILES_BUCKET,
+                Key=f"{_project_prefix(project_id, revision, own)}{filename}",
+            )
         return
 
     # 로컬 fallback
