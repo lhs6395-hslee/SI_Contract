@@ -6,7 +6,7 @@ import importlib
 
 import pytest
 
-from services.cognito_auth import resolve_role, ADMIN_EMAIL
+from services.cognito_auth import resolve_role, LEGACY_OWNER, ADMIN_USERNAME
 
 
 @pytest.fixture
@@ -21,17 +21,23 @@ def store():
     return ps
 
 
-# ─── role 판별 ─────────────────────────────────────────────
+# ─── role 판별 (basic auth의 admin 계정만 admin) ───────────
 
 def test_resolve_role_admin():
-    assert resolve_role(ADMIN_EMAIL) == "admin"
-    assert resolve_role(ADMIN_EMAIL.upper()) == "admin"  # 대소문자 무관
+    # basic auth + admin username만 admin
+    assert resolve_role(ADMIN_USERNAME, "basic") == "admin"
 
 
-def test_resolve_role_user():
-    assert resolve_role("someone@gsneotek.com") == "user"
-    assert resolve_role("") == "user"
-    assert resolve_role(None) == "user"
+def test_resolve_role_basic_test_is_user():
+    # basic auth라도 admin이 아닌 계정(test 등)은 user
+    assert resolve_role("test", "basic") == "user"
+
+
+def test_resolve_role_cognito_is_user():
+    # Google(Cognito) 로그인은 admin username이어도 user (이메일 위조 방지)
+    assert resolve_role("lhs6395@gsneotek.com", "cognito") == "user"
+    assert resolve_role(ADMIN_USERNAME, "cognito") == "user"
+    assert resolve_role("", "") == "user"
 
 
 # ─── owner 저장/보존 ────────────────────────────────────────
@@ -67,15 +73,19 @@ def test_list_filters_by_owner(store):
 def test_admin_sees_all(store):
     store.save_project({"id": "p1", "name": "A"}, owner="alice@x.com")
     store.save_project({"id": "p2", "name": "B"}, owner="bob@x.com")
-    allp = store.list_projects_cached(owner=ADMIN_EMAIL, is_admin=True)
+    allp = store.list_projects_cached(owner=LEGACY_OWNER, is_admin=True)
     assert {p["id"] for p in allp} == {"p1", "p2"}
 
 
 def test_legacy_no_owner_belongs_to_admin(store):
-    # owner 없는 레거시 레코드는 admin 소유로 간주 → 일반 사용자에겐 안 보임
+    # owner 없는 레거시 레코드는 LEGACY_OWNER(=admin username) 소유로 간주
+    # → 일반 사용자에겐 안 보이고, admin(LEGACY_OWNER)에게만 보임
     store.save_project({"id": "legacy", "name": "old"})
     assert store.list_projects_cached(owner="alice@x.com", is_admin=False) == []
-    admin = store.list_projects_cached(owner=ADMIN_EMAIL, is_admin=True)
+    # admin 본인 owner(=LEGACY_OWNER)로 필터해도 레거시가 보임(is_admin 아니어도)
+    by_legacy_owner = store.list_projects_cached(owner=LEGACY_OWNER, is_admin=False)
+    assert {p["id"] for p in by_legacy_owner} == {"legacy"}
+    admin = store.list_projects_cached(owner=LEGACY_OWNER, is_admin=True)
     assert {p["id"] for p in admin} == {"legacy"}
 
 

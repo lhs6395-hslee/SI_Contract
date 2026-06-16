@@ -38,7 +38,7 @@ from services.project_store import (
     get_edit_lock_status,
     list_projects_cached,
 )
-from services.cognito_auth import require_auth, resolve_role
+from services.cognito_auth import require_auth, resolve_role, LEGACY_OWNER
 from services import cognito_auth as _cognito_auth_module
 from services.claude_api import AIUnavailableError
 
@@ -300,7 +300,7 @@ def _project_owner(project_id: str, current_user: dict) -> str:
     if not project:
         return current_user.get("email")
     if current_user.get("role") != "admin":
-        owner = project.get("owner") or ADMIN_EMAIL
+        owner = project.get("owner") or LEGACY_OWNER
         if owner != current_user.get("email"):
             raise HTTPException(404, "Project not found")
     return project.get("owner") or current_user.get("email")
@@ -922,6 +922,9 @@ import base64
 
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
+# 격리 테스트용 일반 user 계정 (basic auth, role=user)
+TEST_USERNAME = os.getenv("TEST_USERNAME", "test")
+TEST_PASSWORD = os.getenv("TEST_PASSWORD", "test")
 
 # JWT_SECRET은 모든 워커/파드에서 동일해야 함 — 랜덤 폴백이면 uvicorn --workers N에서
 # 워커별 시크릿이 달라 토큰 발급 워커 ≠ 검증 워커일 때 401 (env → Secrets Manager → 랜덤 순)
@@ -969,13 +972,19 @@ _cognito_auth_module.basic_token_verifier = _verify_basic_token
 
 @app.post("/api/auth/login")
 async def auth_login(data: dict):
-    """Basic Auth 로그인 — admin 계정."""
+    """Basic Auth 로그인.
+
+    - admin/ADMIN_PASSWORD → 진짜 admin(전체 접근)
+    - test/TEST_PASSWORD   → 일반 user(격리 테스트용)
+    role은 resolve_role이 username 기준으로 판별(admin 계정만 admin).
+    """
     username = data.get("username", "")
     password = data.get("password", "")
 
-    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+    accounts = {ADMIN_USERNAME: ADMIN_PASSWORD, TEST_USERNAME: TEST_PASSWORD}
+    if username in accounts and password == accounts[username]:
         token = _create_basic_token(username)
-        return {"token": token, "user": {"email": username, "role": resolve_role(username)}}
+        return {"token": token, "user": {"email": username, "role": resolve_role(username, "basic")}}
 
     raise HTTPException(401, "Invalid credentials")
 
@@ -993,10 +1002,10 @@ async def auth_me(request: StarletteRequest):
     payload = verify_cognito_token(token)
     if payload:
         email = payload.get("email", payload.get("cognito:username", ""))
-        return {"email": email, "role": resolve_role(email), "provider": "cognito"}
+        return {"email": email, "role": resolve_role(email, "cognito"), "provider": "cognito"}
 
     username = _verify_basic_token(token)
     if username:
-        return {"email": username, "role": resolve_role(username), "provider": "basic"}
+        return {"email": username, "role": resolve_role(username, "basic"), "provider": "basic"}
 
     raise HTTPException(401, "Invalid token")

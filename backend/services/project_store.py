@@ -10,7 +10,7 @@ import time
 from decimal import Decimal
 from typing import Optional
 
-from services.cognito_auth import ADMIN_EMAIL
+from services.cognito_auth import LEGACY_OWNER
 
 DYNAMODB_TABLE = os.getenv("DYNAMODB_TABLE", "")
 DYNAMODB_PIPELINE_TABLE = os.getenv("DYNAMODB_PIPELINE_TABLE", DYNAMODB_TABLE)
@@ -115,7 +115,7 @@ def list_projects_cached(owner: Optional[str] = None, is_admin: bool = False) ->
         return data
     if not owner:
         return []
-    return [p for p in data if (p.get("owner") or ADMIN_EMAIL) == owner]
+    return [p for p in data if (p.get("owner") or LEGACY_OWNER) == owner]
 
 
 # DynamoDB 리소스/테이블 생성은 비싸므로 재사용하되, **boto3 resource는 thread-safe가

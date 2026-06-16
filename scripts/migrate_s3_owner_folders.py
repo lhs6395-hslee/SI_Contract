@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """S3 계정 격리 마이그레이션 — 레거시 projects/{id}/... → projects/{owner}/{id}/...
 
-owner는 DynamoDB 프로젝트 레코드에서 조회한다. owner가 없는 레코드는 ADMIN_EMAIL
-소유로 간주(백엔드 필터와 동일 규칙). 이미 owner 폴더로 옮겨진 객체는 건너뛴다.
+owner는 DynamoDB 프로젝트 레코드에서 조회한다. owner가 없는 레코드는 LEGACY_OWNER
+(=basic admin username)로 간주(백엔드 필터와 동일 규칙). 이미 owner 폴더로 옮겨진 객체는 건너뛴다.
 
 사용:
   python3 scripts/migrate_s3_owner_folders.py --dry-run   # 무엇이 옮겨질지만 출력
@@ -22,18 +22,18 @@ import boto3
 
 from services.s3_storage import S3_FILES_BUCKET, is_s3_enabled
 from services.project_store import list_projects_full, is_dynamo_enabled
-from services.cognito_auth import ADMIN_EMAIL
+from services.cognito_auth import LEGACY_OWNER
 
 LEGACY_PREFIX = "projects/"
 
 
 def _owner_map() -> dict:
-    """{project_id: owner} — owner 없으면 ADMIN_EMAIL."""
+    """{project_id: owner} — owner 없으면 LEGACY_OWNER."""
     m = {}
     for p in list_projects_full():
         pid = p.get("id")
         if pid:
-            m[pid] = p.get("owner") or ADMIN_EMAIL
+            m[pid] = p.get("owner") or LEGACY_OWNER
     return m
 
 
@@ -51,7 +51,7 @@ def main() -> int:
         return 2
 
     owners = _owner_map()
-    print(f"프로젝트 {len(owners)}개 owner 매핑 로드 (admin fallback={ADMIN_EMAIL})")
+    print(f"프로젝트 {len(owners)}개 owner 매핑 로드 (legacy fallback={LEGACY_OWNER})")
 
     s3 = boto3.client("s3")
     paginator = s3.get_paginator("list_objects_v2")
