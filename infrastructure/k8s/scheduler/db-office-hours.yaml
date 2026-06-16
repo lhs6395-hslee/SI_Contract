@@ -1,0 +1,149 @@
+# Aurora 평일 업무시간 스케줄러 — 비용 최소화
+# 평일(월~금) 08:00 KST 시작(start), 19:00 KST 정지(stop).
+# si-contract-dev-aurora는 Serverless v2 (min ACU 0.5)라 유휴 시에도 24h 과금 →
+# 업무시간 외 정지로 절감. 정지/재개는 데이터 보존(stop-db-cluster 최대 7일).
+# 주말은 양쪽 잡 미실행 → 금 19:00 정지 상태가 월 08:00 start까지 유지.
+#
+# RDS API 호출 권한은 IRSA(db-scaler SA → si-contract-dev-db-scaler role)로 주입.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: db-scaler
+  namespace: si-contract
+  labels:
+    app.kubernetes.io/name: db-scaler
+    app.kubernetes.io/part-of: si-contract
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::264594923212:role/si-contract-dev-db-scaler
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: db-start-morning
+  namespace: si-contract
+  labels:
+    app.kubernetes.io/name: db-scaler
+spec:
+  schedule: "0 8 * * 1-5"
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: db-scaler
+        spec:
+          serviceAccountName: db-scaler
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: awscli
+              image: amazon/aws-cli:2.15.0
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              env:
+                # runAsUser 1001은 / 에 쓰기 불가 → aws-cli 캐시용 HOME을 /tmp로
+                - name: HOME
+                  value: /tmp
+                - name: AWS_REGION
+                  value: ap-northeast-2
+                - name: CLUSTER_ID
+                  value: si-contract-dev-aurora
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  STATUS=$(aws rds describe-db-clusters --db-cluster-identifier "$CLUSTER_ID" --query 'DBClusters[0].Status' --output text)
+                  echo "현재 상태: $STATUS"
+                  if [ "$STATUS" = "stopped" ]; then
+                    aws rds start-db-cluster --db-cluster-identifier "$CLUSTER_ID"
+                    echo "start 요청 완료"
+                  else
+                    echo "이미 $STATUS — start 생략"
+                  fi
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 250m
+                  memory: 256Mi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: db-stop-evening
+  namespace: si-contract
+  labels:
+    app.kubernetes.io/name: db-scaler
+spec:
+  schedule: "0 19 * * 1-5"
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: db-scaler
+        spec:
+          serviceAccountName: db-scaler
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: awscli
+              image: amazon/aws-cli:2.15.0
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              env:
+                # runAsUser 1001은 / 에 쓰기 불가 → aws-cli 캐시용 HOME을 /tmp로
+                - name: HOME
+                  value: /tmp
+                - name: AWS_REGION
+                  value: ap-northeast-2
+                - name: CLUSTER_ID
+                  value: si-contract-dev-aurora
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  STATUS=$(aws rds describe-db-clusters --db-cluster-identifier "$CLUSTER_ID" --query 'DBClusters[0].Status' --output text)
+                  echo "현재 상태: $STATUS"
+                  if [ "$STATUS" = "available" ]; then
+                    aws rds stop-db-cluster --db-cluster-identifier "$CLUSTER_ID"
+                    echo "stop 요청 완료"
+                  else
+                    echo "$STATUS 상태 — stop 생략(available 아님)"
+                  fi
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 250m
+                  memory: 256Mi
