@@ -1,0 +1,158 @@
+# 평일 업무시간 스케줄러 — 비용 최소화
+# 평일(월~금) 08:00 KST 기동(replicas=1), 19:00 KST 정지(replicas=0).
+# Fargate는 pod-hour 과금이므로 replicas=0이면 컴퓨트 비용 0.
+# 주말은 양쪽 잡 모두 미실행 → 금요일 19:00 정지 상태가 월요일 08:00까지 유지된다.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: office-hours-scaler
+  namespace: si-contract
+  labels:
+    app.kubernetes.io/name: office-hours-scaler
+    app.kubernetes.io/part-of: si-contract
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: office-hours-scaler
+  namespace: si-contract
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "list", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: office-hours-scaler
+  namespace: si-contract
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: office-hours-scaler
+subjects:
+  - kind: ServiceAccount
+    name: office-hours-scaler
+    namespace: si-contract
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: office-hours-scaler
+  namespace: monitor
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "list", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: office-hours-scaler
+  namespace: monitor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: office-hours-scaler
+subjects:
+  - kind: ServiceAccount
+    name: office-hours-scaler
+    namespace: si-contract
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: scale-up-morning
+  namespace: si-contract
+  labels:
+    app.kubernetes.io/name: office-hours-scaler
+spec:
+  schedule: "0 8 * * 1-5"
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: office-hours-scaler
+        spec:
+          serviceAccountName: office-hours-scaler
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: kubectl
+              image: alpine/k8s:1.35.5
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              command:
+                - /bin/sh
+                - -c
+                - kubectl scale deployment/backend deployment/frontend --replicas=1 -n si-contract && kubectl scale deployment/metrics-server --replicas=1 -n monitor
+              resources:
+                requests:
+                  cpu: 250m
+                  memory: 256Mi
+                limits:
+                  cpu: 250m
+                  memory: 256Mi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: scale-down-evening
+  namespace: si-contract
+  labels:
+    app.kubernetes.io/name: office-hours-scaler
+spec:
+  schedule: "0 19 * * 1-5"
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: office-hours-scaler
+        spec:
+          serviceAccountName: office-hours-scaler
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: kubectl
+              image: alpine/k8s:1.35.5
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              command:
+                - /bin/sh
+                - -c
+                - kubectl scale deployment/backend deployment/frontend --replicas=0 -n si-contract && kubectl scale deployment/metrics-server --replicas=0 -n monitor
+              resources:
+                requests:
+                  cpu: 250m
+                  memory: 256Mi
+                limits:
+                  cpu: 250m
+                  memory: 256Mi
