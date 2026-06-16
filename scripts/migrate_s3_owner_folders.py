@@ -81,13 +81,21 @@ def main() -> int:
                 skipped += 1
                 continue
 
-            # 대상이 이미 있으면 스킵(멱등)
+            # 대상이 이미 있으면 복사는 스킵(멱등). 단 --delete-old면 레거시 원본은 삭제.
+            already = False
             try:
                 s3.head_object(Bucket=S3_FILES_BUCKET, Key=new_key)
-                skipped += 1
-                continue
+                already = True
             except s3.exceptions.ClientError:
                 pass
+
+            if already:
+                skipped += 1
+                if args.delete_old and not args.dry_run:
+                    s3.delete_object(Bucket=S3_FILES_BUCKET, Key=key)
+                    deleted += 1
+                    print(f"  del(legacy, already-copied): {key}")
+                continue
 
             print(f"  copy: {key}\n     -> {new_key}")
             if not args.dry_run:
