@@ -290,14 +290,17 @@ async def health():
 
 # ─── 프로젝트별 파일 저장 ─────────────────────────────────
 
-def _project_owner(project_id: str, current_user: dict) -> str:
-    """소유권 확인 후 파일 저장에 쓸 owner(email) 반환.
+def _project_owner(project_id: str, current_user: dict, require_exists: bool = False) -> str:
+    """소유권 확인 후 파일 저장/조회에 쓸 owner(email) 반환.
 
-    기존 프로젝트면 인가 + 저장된 owner 사용, 신규(아직 프로젝트 레코드 없음)면
-    현재 사용자를 owner로 간주(업로드가 프로젝트 생성보다 먼저 올 수 있음).
+    기존 프로젝트면 인가 + 저장된 owner 사용. 신규(레코드 없음)일 때:
+      - require_exists=False(업로드): 현재 사용자를 owner로 간주(생성 전 업로드 허용).
+      - require_exists=True(조회/삭제): 404(미존재 프로젝트는 빈 200 대신 404로 일관).
     """
     project = load_project(project_id)
     if not project:
+        if require_exists:
+            raise HTTPException(404, "Project not found")
         return current_user.get("email")
     if current_user.get("role") != "admin":
         owner = project.get("owner") or LEGACY_OWNER
@@ -328,7 +331,7 @@ async def upload_project_files(
 async def list_project_files(project_id: str, revision: Optional[int] = None,
                              current_user: dict = Depends(require_auth)):
     """프로젝트의 저장된 파일 목록. revision 지정 시 해당 차수 파일만."""
-    owner = _project_owner(project_id, current_user)
+    owner = _project_owner(project_id, current_user, require_exists=True)
     files = s3_list(project_id, revision=revision, owner=owner)
     return {"project_id": project_id, "files": files}
 
@@ -340,7 +343,7 @@ async def download_project_file(project_id: str, filename: str, revision: Option
     # Path traversal 방지
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
-    owner = _project_owner(project_id, current_user)
+    owner = _project_owner(project_id, current_user, require_exists=True)
     try:
         content = s3_get(project_id, filename, revision=revision, owner=owner)
     except FileNotFoundError:
@@ -363,7 +366,7 @@ async def delete_project_file(project_id: str, filename: str, revision: Optional
     """프로젝트 파일 삭제."""
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
-    owner = _project_owner(project_id, current_user)
+    owner = _project_owner(project_id, current_user, require_exists=True)
     s3_delete(project_id, filename, revision=revision, owner=owner)
     return {"deleted": filename}
 
@@ -406,7 +409,7 @@ async def parse_stored_file(project_id: str, filename: str, revision: Optional[i
     from services.file_parser import extract_text
     from services.s3_storage import get_file
 
-    owner = _project_owner(project_id, current_user)
+    owner = _project_owner(project_id, current_user, require_exists=True)
     try:
         content = get_file(project_id, filename, revision=revision, owner=owner)
     except FileNotFoundError:
@@ -423,7 +426,7 @@ async def parse_stored_pdf_images(project_id: str, filename: str, revision: Opti
     from services.file_parser import extract_pdf_images
     from services.s3_storage import get_file
 
-    owner = _project_owner(project_id, current_user)
+    owner = _project_owner(project_id, current_user, require_exists=True)
     try:
         content = get_file(project_id, filename, revision=revision, owner=owner)
     except FileNotFoundError:
@@ -913,6 +916,8 @@ async def chat(request: StarletteRequest):
 async def lock_project(project_id: str, data: dict, current_user: dict = Depends(require_auth)):
     """프로젝트 편집 잠금 획득 — atomic conditional write, 실패 시 409."""
     _validate_project_id(project_id)
+    if load_project(project_id):
+        _assert_project_access(project_id, current_user)
     user_id = current_user.get("email", data.get("userId", "anonymous"))
     result = acquire_edit_lock(project_id, user_id)
     if result.get("locked"):
@@ -920,16 +925,20 @@ async def lock_project(project_id: str, data: dict, current_user: dict = Depends
     return result
 
 
-@app.post("/api/projects/{project_id}/unlock", dependencies=[Depends(require_auth)])
-async def unlock_project(project_id: str, data: dict):
-    """프로젝트 편집 잠금 해제."""
+@app.post("/api/projects/{project_id}/unlock")
+async def unlock_project(project_id: str, data: dict, current_user: dict = Depends(require_auth)):
+    """프로젝트 편집 잠금 해제 — 소유자/admin만."""
     _validate_project_id(project_id)
+    if load_project(project_id):
+        _assert_project_access(project_id, current_user)
     return release_edit_lock(project_id)
 
 
 @app.get("/api/projects/{project_id}/lock-status")
-async def lock_status(project_id: str):
-    """프로젝트 잠금 상태 조회."""
+async def lock_status(project_id: str, current_user: dict = Depends(require_auth)):
+    """프로젝트 잠금 상태 조회 — 인증 + 소유자/admin만(미인가 누수 차단)."""
+    if load_project(project_id):
+        _assert_project_access(project_id, current_user)
     return get_edit_lock_status(project_id)
 
 

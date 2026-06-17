@@ -7,10 +7,13 @@
 
 import os
 import time
+import logging
 from decimal import Decimal
 from typing import Optional
 
 from services.cognito_auth import LEGACY_OWNER
+
+_logger = logging.getLogger("si-contract")
 
 DYNAMODB_TABLE = os.getenv("DYNAMODB_TABLE", "")
 DYNAMODB_PIPELINE_TABLE = os.getenv("DYNAMODB_PIPELINE_TABLE", DYNAMODB_TABLE)
@@ -171,38 +174,41 @@ def save_project(project_data: dict, owner: Optional[str] = None) -> dict:
     project_data.setdefault("revenue", 0)
     project_data["updated"] = time.strftime("%Y-%m-%d")
 
-    # created_at: 최초 1회만 서버 UTC ISO로 세팅, 업데이트 시 기존 값 보존 (읽기전용 시스템 필드)
-    if not project_data.get("created_at"):
-        from datetime import datetime, timezone
-        existing_ca = None
-        if is_dynamo_enabled():
-            try:
-                resp = _dynamo_project_table().get_item(
-                    Key={"project_id": project_id}, ProjectionExpression="created_at"
-                )
-                existing_ca = resp.get("Item", {}).get("created_at")
-            except Exception:
-                pass
-        else:
-            existing_ca = (_projects.get(project_id) or {}).get("created_at")
-        project_data["created_at"] = existing_ca or datetime.now(timezone.utc).isoformat()
-
-    # owner: 최초 생성 시에만 기록, 이후 기존 값 보존(소유권 탈취 방지).
+    # 기존 레코드의 읽기전용 시스템 필드(created_at, owner)를 1회 조회로 같이 가져온다.
+    # 조회 실패는 fail-safe: 기존 항목이 있을 수 있으므로 신규 owner를 덮어쓰지 않는다
+    #   (DynamoDB 일시 오류 시 owner=None으로 떨어져 타인이 소유권 탈취하는 회귀 방지).
+    existing_ca = None
     existing_owner = None
+    lookup_failed = False
     if is_dynamo_enabled():
         try:
             resp = _dynamo_project_table().get_item(
-                Key={"project_id": project_id}, ProjectionExpression="#o",
+                Key={"project_id": project_id},
+                ProjectionExpression="created_at, #o",
                 ExpressionAttributeNames={"#o": "owner"},
             )
-            existing_owner = resp.get("Item", {}).get("owner")
-        except Exception:
-            pass
+            item = resp.get("Item", {})
+            existing_ca = item.get("created_at")
+            existing_owner = item.get("owner")
+        except Exception as e:
+            lookup_failed = True
+            _logger.warning("save_project: 기존 레코드 조회 실패(owner 보존 모드) pid=%s err=%s", project_id, e)
     else:
-        existing_owner = (_projects.get(project_id) or {}).get("owner")
-    resolved_owner = existing_owner or owner
-    if resolved_owner:
-        project_data["owner"] = resolved_owner
+        existing = _projects.get(project_id) or {}
+        existing_ca = existing.get("created_at")
+        existing_owner = existing.get("owner")
+
+    # created_at: 최초 1회만 세팅, 이후 기존 값 보존
+    if not project_data.get("created_at"):
+        from datetime import datetime, timezone
+        project_data["created_at"] = existing_ca or datetime.now(timezone.utc).isoformat()
+
+    # owner: 기존 owner가 있으면 항상 보존. 신규 owner는 '조회 성공 + 기존 owner 없음'일 때만 기록.
+    # 조회 실패 시엔 신규 owner를 쓰지 않음(기존 소유권 보호).
+    if existing_owner:
+        project_data["owner"] = existing_owner
+    elif owner and not lookup_failed:
+        project_data["owner"] = owner
 
     if is_dynamo_enabled():
         table = _dynamo_project_table()

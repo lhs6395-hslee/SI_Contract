@@ -13,7 +13,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-import ai_core
+# ai_core는 컨테이너 빌드 시 같은 디렉토리로 복사된다(Dockerfile). 소스 트리에서
+# 단독 실행(개발/테스트)할 때는 backend/services/ai_core.py를 path에 추가해 import.
+try:
+    import ai_core
+except ModuleNotFoundError:
+    _here = os.path.dirname(os.path.abspath(__file__))
+    _backend_services = os.path.normpath(os.path.join(_here, "..", "..", "backend", "services"))
+    if os.path.isfile(os.path.join(_backend_services, "ai_core.py")):
+        sys.path.insert(0, _backend_services)
+    import ai_core
 
 logging.basicConfig(
     level=logging.INFO,

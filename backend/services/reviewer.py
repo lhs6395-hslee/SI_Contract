@@ -17,11 +17,14 @@
 """
 
 from __future__ import annotations
+import logging
 import openpyxl
 from models import (
     SprintContract, StepResult, ReviewResult, InputUsed,
 )
 from services.harness_loader import cell_map, verifier_rules, record_run
+
+_logger = logging.getLogger("si-contract")
 
 
 def _load_fee_constants() -> tuple[int, int, int]:
@@ -603,8 +606,10 @@ def run_review(
             errors=all_errors,
             token_usage=ai_tokens,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        # 감사 기록 실패는 파이프라인을 막지 않되, 조용히 삼키지 않고 로깅(감사 추적 유실 가시화).
+        _logger.warning("record_run 실패(리뷰 감사 기록 유실) pid=%s err=%s",
+                        getattr(contract, 'project_id', 'unknown'), e)
 
     return (ReviewResult(
         verdict=verdict,
