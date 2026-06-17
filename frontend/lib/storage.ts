@@ -110,20 +110,26 @@ export async function loadProjectsAsync(): Promise<{ projects: ProjectData[]; la
       syncToLocalStorage(projects, lastId);
       return { projects, lastProjectId: lastId };
     }
-  } catch { /* 서버 접근 불가 — fallback */ }
+    // 비-2xx(401은 api-fetch가 리다이렉트 처리) — stale 캐시 fallback을 가시화
+    console.warn(`[storage] 프로젝트 목록 서버 응답 ${res.status} — 로컬 캐시로 표시(최신 아닐 수 있음)`);
+  } catch { /* 네트워크 실패 — 조용히 fallback */ }
   return loadProjects();
 }
 
-export async function saveProjectAsync(project: ProjectData): Promise<void> {
+export async function saveProjectAsync(project: ProjectData): Promise<boolean> {
+  let ok = false;
   try {
-    await apiFetch(`${FASTAPI_BASE}/api/projects`, {
+    const res = await apiFetch(`${FASTAPI_BASE}/api/projects`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(project),
     });
+    ok = res.ok;
+    if (!ok) console.warn(`[storage] 프로젝트 저장 서버 응답 ${res.status} — 로컬에만 저장됨`);
   } catch { /* 서버 접근 불가 */ }
-  // localStorage 캐시도 업데이트
+  // localStorage 캐시도 업데이트 (서버 저장 성공 여부와 무관하게 로컬 보존)
   saveProject(project);
+  return ok;
 }
 
 export async function loadProjectDataAsync(id: string): Promise<ProjectData | null> {
@@ -133,7 +139,8 @@ export async function loadProjectDataAsync(id: string): Promise<ProjectData | nu
       const project = await res.json();
       return project;
     }
-  } catch { /* 서버 접근 불가 — fallback */ }
+    console.warn(`[storage] 프로젝트(${id}) 서버 응답 ${res.status} — 로컬 캐시로 표시(최신 아닐 수 있음)`);
+  } catch { /* 네트워크 실패 — 조용히 fallback */ }
   return loadProjectData(id);
 }
 

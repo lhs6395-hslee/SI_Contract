@@ -85,6 +85,16 @@ def _validate_project_id(project_id: str) -> str:
         raise HTTPException(status_code=422, detail="프로젝트 ID는 영문/숫자/_/- 1~64자만 허용됩니다")
     return project_id
 
+
+def _validate_revision(revision):
+    """revision 범위 검증 — None 허용, 그 외 0~MAX_REVISION 정수. 음수/초과/비정수는 422."""
+    if revision is None:
+        return None
+    from services.company_standards import MAX_REVISION
+    if not isinstance(revision, int) or revision < 0 or revision > MAX_REVISION:
+        raise HTTPException(status_code=422, detail=f"revision은 0~{MAX_REVISION} 범위 정수여야 합니다")
+    return revision
+
 from telemetry import init_telemetry
 init_telemetry(app)
 
@@ -317,6 +327,7 @@ async def upload_project_files(
     current_user: dict = Depends(require_auth),
 ):
     """프로젝트에 파일 저장 (S3 또는 로컬). revision 지정 시 rev{N}/ 경로에 저장."""
+    _validate_revision(revision)
     owner = _project_owner(project_id, current_user)
     saved = []
     for f in files:
@@ -331,6 +342,7 @@ async def upload_project_files(
 async def list_project_files(project_id: str, revision: Optional[int] = None,
                              current_user: dict = Depends(require_auth)):
     """프로젝트의 저장된 파일 목록. revision 지정 시 해당 차수 파일만."""
+    _validate_revision(revision)
     owner = _project_owner(project_id, current_user, require_exists=True)
     files = s3_list(project_id, revision=revision, owner=owner)
     return {"project_id": project_id, "files": files}
@@ -343,6 +355,7 @@ async def download_project_file(project_id: str, filename: str, revision: Option
     # Path traversal 방지
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
+    _validate_revision(revision)
     owner = _project_owner(project_id, current_user, require_exists=True)
     try:
         content = s3_get(project_id, filename, revision=revision, owner=owner)
@@ -366,6 +379,7 @@ async def delete_project_file(project_id: str, filename: str, revision: Optional
     """프로젝트 파일 삭제."""
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
+    _validate_revision(revision)
     owner = _project_owner(project_id, current_user, require_exists=True)
     s3_delete(project_id, filename, revision=revision, owner=owner)
     return {"deleted": filename}
@@ -409,12 +423,14 @@ async def parse_stored_file(project_id: str, filename: str, revision: Optional[i
     from services.file_parser import extract_text
     from services.s3_storage import get_file
 
+    _validate_revision(revision)
     owner = _project_owner(project_id, current_user, require_exists=True)
     try:
         content = get_file(project_id, filename, revision=revision, owner=owner)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found")
 
+    _check_upload_size(filename, content)
     text = extract_text(filename, content)
     return {"filename": filename, "text": text}
 
@@ -426,11 +442,13 @@ async def parse_stored_pdf_images(project_id: str, filename: str, revision: Opti
     from services.file_parser import extract_pdf_images
     from services.s3_storage import get_file
 
+    _validate_revision(revision)
     owner = _project_owner(project_id, current_user, require_exists=True)
     try:
         content = get_file(project_id, filename, revision=revision, owner=owner)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found")
+    _check_upload_size(filename, content)
     images = extract_pdf_images(content, max_pages=5)
     return {"filename": filename, "images": images}
 
@@ -676,8 +694,11 @@ async def start_pipeline(request: StarletteRequest, current_user: dict = Depends
 
 
 @app.get("/api/pipeline/{project_id}/status")
-async def pipeline_status(project_id: str):
-    """파이프라인 상태 조회."""
+async def pipeline_status(project_id: str, current_user: dict = Depends(require_auth)):
+    """파이프라인 상태 조회 — 소유자/admin만(무인증 project_id 열거 차단)."""
+    _validate_project_id(project_id)
+    if load_project(project_id):
+        _assert_project_access(project_id, current_user)
     state = load_pipeline_state(project_id)
     if not state:
         raise HTTPException(404, "Pipeline not found")
@@ -736,7 +757,7 @@ def _assert_project_access(project_id: str, current_user: dict) -> dict:
         raise HTTPException(404, "Project not found")
     if current_user.get("role") == "admin":
         return project
-    owner = project.get("owner") or ADMIN_EMAIL
+    owner = project.get("owner") or LEGACY_OWNER
     if owner != current_user.get("email"):
         raise HTTPException(404, "Project not found")
     return project
@@ -984,7 +1005,7 @@ def _verify_basic_token(token: str) -> str | None:
             return None
         payload, sig = parts
         expected_sig = hmac.new(JWT_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
-        if sig != expected_sig:
+        if not hmac.compare_digest(sig, expected_sig):  # 상수시간 비교(타이밍 공격 방지)
             return None
         username, expires = payload.rsplit(":", 1)
         if int(expires) < int(time.time()):

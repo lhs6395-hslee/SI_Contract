@@ -1068,14 +1068,16 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
         <CardContent className="pt-6 space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium">사업범위</label>
-            <Textarea defaultValue={scope.value as string} rows={4} />
+            <Textarea value={(scope.value as string) || ""} rows={4}
+              onChange={(e) => updateField("scope", e.target.value)} />
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium flex items-center gap-2">
               특기사항
               {specialNotes.confidence === "guess" && <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300">추측</Badge>}
             </label>
-            <Textarea defaultValue={specialNotes.value as string} />
+            <Textarea value={(specialNotes.value as string) || ""}
+              onChange={(e) => updateField("specialNotes", e.target.value)} />
           </div>
         </CardContent>
       </Card>
