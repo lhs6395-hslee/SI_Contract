@@ -213,10 +213,11 @@ def _build_fee_items(extracted: dict, cost_items: list) -> tuple[list[FeeItem], 
     for item in cost_items:
         if item.get("category", "other") != "fee":
             continue
-        raw_contract_qty = item.get("contractQty", 0)
-        raw_execution_qty = item.get("executionQty", 0)
-        contract_price = item.get("contractPrice", 0)
-        execution_price = item.get("executionPrice", 0)
+        # `or 0` — 값이 명시적 None이면 0으로(int(None) TypeError 크래시 방지).
+        raw_contract_qty = item.get("contractQty") or 0
+        raw_execution_qty = item.get("executionQty") or 0
+        contract_price = item.get("contractPrice") or 0
+        execution_price = item.get("executionPrice") or 0
 
         # 일할계산: 시작일이 월 중간이고 M/M 단위이며 정수 수량일 때만 적용
         # 이미 소수점 수량이면 사용자가 수정한 것이므로 건드리지 않음

@@ -380,7 +380,7 @@ async def download_project_file(project_id: str, filename: str, revision: Option
         return Response(
             content=content,
             media_type="application/octet-stream",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            headers={"Content-Disposition": _content_disposition(filename)},
         )
     # 로컬 fallback — FileResponse 사용 (기존 동작 유지)
     file_path = _project_dir(project_id) / filename
