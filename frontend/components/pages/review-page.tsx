@@ -366,6 +366,7 @@ export function ReviewPage() {
           }
         }
         return {
+          ...prev,  // confirmedTabs/manuallyVerified/revisionReason/revisionType 등 보존(재추출 시 유실 방지)
           projectName: prev.projectName,
           extracted: merged as ExtractedData["extracted"],
           costItems: (newCostItems as ExtractedData["costItems"]) || prev.costItems || [],
@@ -1104,6 +1105,13 @@ function EditableCell({ value, onChange, className = "", align = "left", mono = 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const committed = React.useRef(false);
+
+  // value(행 데이터)가 바뀌면 편집 모드 해제 — 리스트가 index를 key로 써서 행 삭제/정렬 시
+  // 컴포넌트 인스턴스가 재사용될 때, 이전 행의 draft가 새 행에 commit되는 것을 방지.
+  useEffect(() => {
+    setEditing(false);
+    committed.current = true;
+  }, [value]);
 
   const startEdit = () => {
     committed.current = false;
