@@ -117,7 +117,8 @@ class CommonSheetWriter(SheetWriter):
                 quote_label = "prev_revisions[0] (견적품의 고정)"
 
         def _thousand(val, threshold=1_000_000):
-            return round(val / 1000) if val >= threshold else val
+            # abs로 비교 — 음수(손실 프로젝트 매출/이익)도 천원 변환되도록(val>=threshold는 음수 누락).
+            return round(val / 1000) if abs(val) >= threshold else val
 
         if getattr(quote_src, 'revenue', None):
             self.write_cell("F4", _thousand(quote_src.revenue), source=f"{quote_label}.revenue (천원)", calc_basis="원÷1000")

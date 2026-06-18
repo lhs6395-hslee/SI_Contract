@@ -445,7 +445,7 @@ async def parse_stored_file(project_id: str, filename: str, revision: Optional[i
         raise HTTPException(status_code=404, detail="File not found")
 
     _check_upload_size(filename, content)
-    text = extract_text(filename, content)
+    text = _safe_extract_text(filename, content)  # 손상 파일 500 누출 방지(422로 래핑)
     return {"filename": filename, "text": text}
 
 

@@ -7,7 +7,7 @@ Executor/Reviewer 간 교환 형식 정의.
 from __future__ import annotations
 from enum import Enum
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ─── Sprint_Contract 구성 요소 ───
@@ -94,11 +94,29 @@ class StaffItem(BaseModel):
     months: list[float] = Field(default_factory=lambda: [0.0] * 12)
     monthly_rate: int = 0
 
+    @field_validator("months", mode="before")
+    @classmethod
+    def _normalize_months(cls, v):
+        # 빌더/시트 라이터는 길이 12 고정 가정 — 짧으면 0 패딩, 길면 12로 절단, None은 0배열.
+        if not v:
+            return [0.0] * 12
+        v = list(v)[:12]
+        return v + [0.0] * (12 - len(v))
+
 
 class ScheduleItem(BaseModel):
     name: str = ""
     start_month: int = 0
     end_month: int = 11
+
+    @field_validator("start_month", "end_month", mode="before")
+    @classmethod
+    def _clamp_month(cls, v):
+        # 시트 열 매핑(H+m)이 0~11 가정 — 범위 밖/None은 클램프(크래시 대신 안전값).
+        try:
+            return max(0, min(11, int(v)))
+        except (TypeError, ValueError):
+            return 0
 
 
 class OrgMember(BaseModel):
@@ -115,6 +133,16 @@ class RateSet(BaseModel):
     health_insurance: float = 0
     employment_insurance: float = 0
     industrial_accident: float = 0
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _sane_percent(cls, v):
+        # 요율은 % 값(0~100) — 음수/100 초과/비숫자는 0으로(계산 오염 방지).
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return 0.0
+        return f if 0 <= f <= 100 else 0.0
 
 
 class StepDef(BaseModel):
