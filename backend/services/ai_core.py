@@ -112,8 +112,10 @@ def invoke_bedrock(
         model_id = route_model(task_type, user_id)
 
     if images:
+        if len(images) > 8:  # 토큰/비용 상한 — 초과분 누락을 가시화(조용한 누락 방지)
+            _logger.warning("Vision 이미지 %d장 중 8장만 전송(상한) — %d장 누락", len(images), len(images) - 8)
         content: list = [{"type": "text", "text": prompt}]
-        for b64 in images[:8]:  # 토큰/비용 상한
+        for b64 in images[:8]:
             content.append({
                 "type": "image",
                 "source": {"type": "base64", "media_type": "image/png", "data": b64},

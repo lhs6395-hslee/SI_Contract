@@ -481,6 +481,27 @@ def _internal_headers() -> dict:
     return {"X-Internal-Secret": INTERNAL_SERVICE_SECRET} if INTERNAL_SERVICE_SECRET else {}
 
 
+async def _call_ai_service(path: str, payload: dict) -> dict:
+    """ai-service(USE_AI_SERVICE=true) POST 호출 — 다운/타임아웃을 502로 graceful 래핑.
+
+    모놀리스 경로(invoke_bedrock 예외)와 동일하게 502 {error,code:AI_UNAVAILABLE}로 통일.
+    (기존엔 httpx 예외가 try 없이 500 트레이스백으로 누출)
+    """
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(f"{AI_SERVICE_URL}{path}", json=payload, headers=_internal_headers())
+        if resp.status_code >= 500:
+            logger.warning("ai-service %s 응답 %s", path, resp.status_code)
+            raise HTTPException(status_code=502, detail={"error": "AI 서비스 일시적 오류", "code": "AI_UNAVAILABLE"})
+        return resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("ai-service %s 호출 실패: %s", path, e)
+        raise HTTPException(status_code=502, detail={"error": "AI 서비스 일시적 오류", "code": "AI_UNAVAILABLE"})
+
+
 # ─── AI 문서 분류 ─────────────────────────────────────────
 
 @app.post("/api/classify", dependencies=[Depends(require_auth)])
@@ -492,9 +513,7 @@ async def classify_file(file: UploadFile = File(...)):
 
     if USE_AI_SERVICE:
         import httpx
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(f"{AI_SERVICE_URL}/classify", json={"filename": file.filename, "text": text}, headers=_internal_headers())
-            return resp.json()
+        return await _call_ai_service("/classify", {"filename": file.filename, "text": text})
 
     from services.claude_api import classify_document
     return classify_document(file.filename, text)
@@ -526,9 +545,7 @@ async def extract_fields(files: list[UploadFile] = File(...)):
 
     if USE_AI_SERVICE:
         import httpx
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(f"{AI_SERVICE_URL}/extract", json={"documents": documents}, headers=_internal_headers())
-            return resp.json()
+        return await _call_ai_service("/extract", {"documents": documents})
 
     from services.claude_api import extract_all_fields
     return extract_all_fields(documents)
@@ -572,13 +589,7 @@ async def _tab_extract(section: str, documents: list[dict]) -> dict:
     ai-service는 backend와 동일한 ai_core를 쓰므로 결과가 같다.
     """
     if USE_AI_SERVICE:
-        import httpx
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                f"{AI_SERVICE_URL}/extract-{section}",
-                json={"documents": documents}, headers=_internal_headers(),
-            )
-            return resp.json()
+        return await _call_ai_service(f"/extract-{section}", {"documents": documents})
 
     from services import claude_api
     return claude_api.extract_section(section, documents)
@@ -621,9 +632,7 @@ async def validate_fields(data: dict):
     """추출된 값 교차 검증 — 충돌 감지."""
     if USE_AI_SERVICE:
         import httpx
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(f"{AI_SERVICE_URL}/validate", json=data, headers=_internal_headers())
-            return resp.json()
+        return await _call_ai_service("/validate", data)
 
     from services.claude_api import cross_validate
     conflicts = cross_validate(data)
@@ -658,9 +667,12 @@ async def start_pipeline(request: StarletteRequest, current_user: dict = Depends
 
     data = _sanitize_surrogates(await _safe_json_body(request))
     project_id = _validate_project_id(data.get("projectId", f"p_{int(time.time() * 1000)}"))
-    # 기존 프로젝트면 소유권 확인(신규 project_id면 통과 — 본인이 생성).
+    # 기존 프로젝트면 소유권 확인. 신규면 owner를 박아 레코드를 보장 — status/result 인가가
+    # load_project에 의존하므로(삭제 전까지) 폴링 404 방지 + 결과물 격리 기준 owner 확보.
     if load_project(project_id):
         _assert_project_access(project_id, current_user)
+    else:
+        save_project({"id": project_id, "name": data.get("name", "")}, owner=current_user.get("email"))
     extracted_data = data.get("extractedData", {})
     if not extracted_data:
         raise HTTPException(status_code=422, detail="extractedData가 필요합니다")
@@ -713,10 +725,12 @@ async def start_pipeline(request: StarletteRequest, current_user: dict = Depends
 
 @app.get("/api/pipeline/{project_id}/status")
 async def pipeline_status(project_id: str, current_user: dict = Depends(require_auth)):
-    """파이프라인 상태 조회 — 소유자/admin만(무인증 project_id 열거 차단)."""
+    """파이프라인 상태 조회 — 소유자/admin만(무인증 project_id 열거 차단).
+
+    프로젝트 레코드가 없으면(삭제됨) 404 — 삭제 후 잔존 pipeline_state도 노출 안 함.
+    """
     _validate_project_id(project_id)
-    if load_project(project_id):
-        _assert_project_access(project_id, current_user)
+    _assert_project_access(project_id, current_user)
     state = load_pipeline_state(project_id)
     if not state:
         raise HTTPException(404, "Pipeline not found")
@@ -725,9 +739,9 @@ async def pipeline_status(project_id: str, current_user: dict = Depends(require_
 
 @app.get("/api/pipeline/{project_id}/result")
 async def pipeline_result(project_id: str, current_user: dict = Depends(require_auth)):
-    """완성된 집행계획서 엑셀 다운로드 (S3 우선, 로컬 fallback)."""
-    if load_project(project_id):
-        _assert_project_access(project_id, current_user)
+    """완성된 집행계획서 엑셀 다운로드 (S3 우선, 로컬 fallback). 소유자/admin만."""
+    _validate_project_id(project_id)
+    _assert_project_access(project_id, current_user)
     state = load_pipeline_state(project_id)
     if not state or not state.get("output_file"):
         raise HTTPException(404, "Result not found")
@@ -921,15 +935,10 @@ async def chat(request: StarletteRequest):
     # 순수 추론은 USE_AI_SERVICE면 ai-service로 위임(컨텍스트 구성은 backend 책임).
     # ai-service는 backend와 동일 ai_core를 쓰므로 응답 형식이 같다.
     if USE_AI_SERVICE:
-        import httpx
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                f"{AI_SERVICE_URL}/chat",
-                json={"message": user_message, "system": system_prompt,
-                      "max_tokens": 1024, "user_id": user_id},
-                headers=_internal_headers(),
-            )
-            return resp.json()
+        return await _call_ai_service("/chat", {
+            "message": user_message, "system": system_prompt,
+            "max_tokens": 1024, "user_id": user_id,
+        })
 
     from services.claude_api import invoke_bedrock
     # AIUnavailableError는 전역 핸들러가 502 {"error","code":"AI_UNAVAILABLE"}로 래핑
