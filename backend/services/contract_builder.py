@@ -577,22 +577,26 @@ def build_sprint_contract(
         "경비_여비교통비": "travel" in categories_present,
     }
 
+    # get(k, default)는 키 부재 시에만 default — 값이 명시적 None이면 그대로 들어가 Pydantic
+    # ValidationError 크래시. `or`로 None도 기본값으로 흡수한다(빈 문자열/0/빈 배열 안전).
     staff_items = [
         StaffItem(
-            name=s.get("name", "TBD"),
-            role=s.get("role", ""),
-            grade=s.get("grade", ""),
-            type=s.get("type", "직접"),
-            company=s.get("company", ""),
-            months=s.get("months", [0.0] * 12),
-            monthly_rate=s.get("monthlyRate", 0),
+            name=s.get("name") or "TBD",
+            role=s.get("role") or "",
+            grade=s.get("grade") or "",
+            type=s.get("type") or "직접",
+            company=s.get("company") or "",
+            months=s.get("months") or [0.0] * 12,
+            monthly_rate=s.get("monthlyRate") or 0,
         )
-        for s in staff_plan
+        for s in staff_plan if isinstance(s, dict)
     ]
 
     schedule_items = [
-        ScheduleItem(name=s.get("name", ""), start_month=s.get("startMonth", 0), end_month=s.get("endMonth", 11))
-        for s in schedule
+        ScheduleItem(name=s.get("name") or "",
+                     start_month=s.get("startMonth") if s.get("startMonth") is not None else 0,
+                     end_month=s.get("endMonth") if s.get("endMonth") is not None else 11)
+        for s in schedule if isinstance(s, dict)
     ]
 
     org_members = [

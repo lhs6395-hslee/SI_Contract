@@ -90,7 +90,25 @@ def verify_cognito_token(token: str) -> dict | None:
 
     jwks = _fetch_jwks()
     kid = header.get("kid")
-    if kid and not any(k.get("kid") == kid for k in jwks.get("keys", [])):
+    # kid는 필수 — 없거나 JWKS에 매칭되지 않으면 거부(없으면 통과시키던 우회 차단).
+    keys = {k.get("kid"): k for k in jwks.get("keys", [])}
+    if not kid or kid not in keys:
+        return None
+
+    # RSA 서명 실검증 — PyJWT 가용 시 수행(없으면 클레임+kid 검증으로 폴백).
+    try:
+        import jwt as _pyjwt
+        from jwt.algorithms import RSAAlgorithm
+        public_key = RSAAlgorithm.from_jwk(json.dumps(keys[kid]))
+        _pyjwt.decode(
+            token, public_key, algorithms=["RS256"],
+            audience=COGNITO_CLIENT_ID, issuer=expected_iss,
+            options={"verify_aud": payload.get("aud") is not None},
+        )
+    except ImportError:
+        logger.warning("PyJWT 미설치 — JWT RSA 서명 미검증(클레임+kid만). 프로덕션은 PyJWT 필요.")
+    except Exception as e:
+        logger.warning("JWT 서명 검증 실패: %s", e)
         return None
 
     return payload
