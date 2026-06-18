@@ -40,6 +40,33 @@ def _load_fee_constants() -> tuple[int, int, int]:
 DATA_START_ROW, DATA_END_ROW, FEE_TOTAL_ROW = _load_fee_constants()
 
 
+def _resolve_sheet(wb, base_name: str, contract=None):
+    """차수 시트명 해석 — 정확히 base가 있으면 그대로, 없으면 'base (N차)' 최신 차수를 선택.
+
+    수정집행(revision>=1)에서 시트에 ' (N차)' 접미사가 붙어 reviewer가 base 이름으로
+    못 찾던 문제 대응. NFC 정규화로 한글 분해/결합 차이도 흡수.
+    """
+    import unicodedata
+    import re
+    nfc = lambda s: unicodedata.normalize("NFC", str(s))
+    names = {nfc(s): s for s in wb.sheetnames}
+    base_nfc = nfc(base_name)
+    if base_nfc in names:
+        return wb[names[base_nfc]]
+    best, best_rev = None, -1
+    pat = re.compile(re.escape(base_nfc) + r"\s*\((\d+)차\)")
+    for nm_nfc, original in names.items():
+        m = pat.fullmatch(nm_nfc)
+        if m and int(m.group(1)) > best_rev:
+            best_rev, best = int(m.group(1)), original
+    if best is not None:
+        return wb[best]
+    for nm_nfc, original in names.items():
+        if nm_nfc.startswith(base_nfc):
+            return wb[original]
+    return wb[base_name]
+
+
 def _cell_val(ws, ref, default=0):
     v = ws[ref].value
     if v is None:
@@ -119,7 +146,7 @@ JSON 배열만 반환하세요."""
 
 def _verify_fee_structure(wb: openpyxl.Workbook, contract: SprintContract) -> dict:
     """Stage 1: 수수료 시트 행별 검증 + 연도분리 + 소스대조."""
-    ws = wb["5-4. 수수료산출내역"]
+    ws = _resolve_sheet(wb, "5-4. 수수료산출내역", contract)
     errors = []
     ok_count = 0
 
@@ -302,7 +329,7 @@ def _verify_breakdown(
         ok_count += 1
 
     # --- 수수료↔5.4 교차 검증 ---
-    fee_ws = wb["5-4. 수수료산출내역"]
+    fee_ws = _resolve_sheet(wb, "5-4. 수수료산출내역", contract)
     actual_fee_total = 0
     for i in range(len(contract.fee_items)):
         row = DATA_START_ROW + i

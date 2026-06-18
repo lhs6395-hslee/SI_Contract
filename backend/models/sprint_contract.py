@@ -201,6 +201,7 @@ class PipelineStatus(str, Enum):
     pending = "pending"
     running = "running"
     completed = "completed"
+    completed_with_review_error = "completed_with_review_error"  # 산출물 생성됨, 리뷰 검증만 실패
     failed = "failed"
     escalated = "escalated"
 

@@ -76,6 +76,20 @@ async def json_decode_handler(request, exc: json.JSONDecodeError):
     return JSONResponse(status_code=422, content={"error": "잘못된 JSON 형식입니다"})
 
 
+from botocore.exceptions import ClientError as _BotoClientError
+
+
+@app.exception_handler(_BotoClientError)
+async def boto_client_error_handler(request, exc: _BotoClientError):
+    """AWS(DynamoDB/S3) 클라이언트 오류 → raw 노출 금지. item 크기 초과는 413, 그 외 502."""
+    code = exc.response.get("Error", {}).get("Code", "")
+    msg = str(exc.response.get("Error", {}).get("Message", ""))
+    logger.warning("AWS ClientError: code=%s msg=%s", code, msg)
+    if code == "ValidationException" and "item size" in msg.lower():
+        return JSONResponse(status_code=413, content={"error": "데이터가 너무 큽니다(저장 한도 초과). 차수/내역을 줄여 주세요."})
+    return JSONResponse(status_code=502, content={"error": "저장소 일시적 오류. 잠시 후 다시 시도해 주세요."})
+
+
 # 프로젝트 ID 유효성 — path/XSS injection 방지
 PROJECT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
@@ -449,7 +463,11 @@ async def parse_stored_pdf_images(project_id: str, filename: str, revision: Opti
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found")
     _check_upload_size(filename, content)
-    images = extract_pdf_images(content, max_pages=5)
+    try:
+        images = extract_pdf_images(content, max_pages=5)
+    except Exception as e:
+        logger.warning("저장 PDF 이미지 변환 실패 %s: %s", filename, e)
+        raise HTTPException(status_code=422, detail=f"PDF를 읽을 수 없습니다(손상): {filename}")
     return {"filename": filename, "images": images}
 
 
@@ -799,6 +817,7 @@ async def patch_project_revision(project_id: str, revision: int, request: Starle
                                  current_user: dict = Depends(require_auth)):
     """현재 차수 데이터만 머지 저장 — 다른 차수는 그대로 유지. 소유자/admin만."""
     _validate_project_id(project_id)
+    _validate_revision(revision)
     existing = _assert_project_access(project_id, current_user)
     data = _sanitize_surrogates(await _safe_json_body(request))
     revisions = existing.get("revisions", {})

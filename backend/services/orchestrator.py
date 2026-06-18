@@ -121,25 +121,34 @@ async def run_pipeline(
             _execute_step_async(step, contract, wb)
             for step in steps
         ])
-        for result in results:
-            state.step_results[result.step_id] = result
-            if result.status == StepStatus.failed:
+        for idx, result in enumerate(results):
+            # 실패 step은 같은 레벨에서 즉시 재실행(최대 3회). 재시도 소진 시 escalate.
+            # (AGENTS.md "최대 3회 재시도" — 기존엔 retry_count만 증가하고 재실행이 없었음)
+            while result.status == StepStatus.failed:
                 retry = state.retry_count.get(result.step_id, 0)
                 if retry >= 3:
+                    state.step_results[result.step_id] = result
                     state.status = PipelineStatus.escalated
                     state.error = f"Step {result.step_id} failed after 3 retries: {result.notes}"
                     return state
                 state.retry_count[result.step_id] = retry + 1
+                result = await _execute_step_async(steps[idx], contract, wb)
+            state.step_results[result.step_id] = result
 
     # Reviewer — 독립 5단계 검증 (정보 장벽 유지)
+    review_failed = False
     from services.reviewer import run_review
     try:
         review_result, token_usage = run_review(contract, state.step_results, wb)
         state.review_results = [review_result]
         state.token_usage = token_usage
     except Exception as e:
+        # 리뷰 실패는 파이프라인(엑셀 생성)을 막지 않되, '검증 미수행'을 상태에 가시화한다.
+        # (조용히 삼키면 completed+review=null+error=null로 검증 스킵과 구분 불가)
         import logging
         logging.getLogger("si-contract").warning("Review failed (non-blocking): %s", e)
+        review_failed = True
+        state.error = f"리뷰 검증 실패(산출물은 생성됨): {e}"
 
     output_filename = f"{project_id}_집행계획서.xlsx"
     output_path = RESULTS_DIR / output_filename
@@ -159,7 +168,9 @@ async def run_pipeline(
 
     await asyncio.get_event_loop().run_in_executor(None, _save_and_upload)
 
-    state.status = PipelineStatus.completed
+    # 산출물은 생성됨. 리뷰가 실패했으면 completed로 가리지 않고 별도 상태로 가시화.
+    state.status = (PipelineStatus.completed_with_review_error if review_failed
+                    else PipelineStatus.completed)
     state.output_file = s3_key
     return state
 
