@@ -186,6 +186,7 @@ def save_project(project_data: dict, owner: Optional[str] = None) -> dict:
                 Key={"project_id": project_id},
                 ProjectionExpression="created_at, #o",
                 ExpressionAttributeNames={"#o": "owner"},
+                ConsistentRead=True,  # owner 보존 판단은 stale read면 안 됨(소유권 탈취 방지)
             )
             item = resp.get("Item", {})
             existing_ca = item.get("created_at")
@@ -213,6 +214,26 @@ def save_project(project_data: dict, owner: Optional[str] = None) -> dict:
     if is_dynamo_enabled():
         table = _dynamo_project_table()
         item = _float_to_decimal({"project_id": project_id, **project_data})
+        # 신규 owner를 박는 경우(=새 프로젝트 생성)엔 동시 생성 경합을 막기 위해
+        # attribute_not_exists 조건부 put. 조건 실패 = 그 사이 누가 먼저 만듦 →
+        # 그 레코드의 owner를 보존(탈취 방지)하고 무조건 put으로 폴백.
+        if owner and not existing_owner and not lookup_failed:
+            try:
+                table.put_item(Item=item, ConditionExpression="attribute_not_exists(project_id)")
+                _bump_projects_version()
+                return project_data
+            except Exception:
+                try:
+                    r2 = table.get_item(Key={"project_id": project_id},
+                                        ProjectionExpression="#o",
+                                        ExpressionAttributeNames={"#o": "owner"},
+                                        ConsistentRead=True)
+                    won = r2.get("Item", {}).get("owner")
+                    if won:
+                        item["owner"] = won
+                        project_data["owner"] = won
+                except Exception:
+                    pass
         table.put_item(Item=item)
         _bump_projects_version()
         return project_data

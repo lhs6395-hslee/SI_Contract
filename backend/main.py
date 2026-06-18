@@ -60,8 +60,15 @@ app = FastAPI(title="SI 집행계획서 API", version="0.1.0")
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc: RequestValidationError):
-    """잘못된 요청 본문/파라미터 → 500 대신 422."""
-    return JSONResponse(status_code=422, content={"error": "요청 형식이 올바르지 않습니다", "detail": exc.errors()})
+    """잘못된 요청 본문/파라미터 → 500 대신 422. 내부 스키마(loc/type/input)는 로그로만,
+    클라이언트엔 어느 필드가 문제인지 정도만 노출(역공학 방지)."""
+    try:
+        fields = sorted({str(e.get("loc", ["?"])[-1]) for e in exc.errors()})
+    except Exception:
+        fields = []
+    logger.info("RequestValidationError: %s", exc.errors())
+    detail = f"다음 항목을 확인하세요: {', '.join(fields)}" if fields else "요청 형식이 올바르지 않습니다"
+    return JSONResponse(status_code=422, content={"error": "요청 형식이 올바르지 않습니다", "detail": detail})
 
 
 @app.exception_handler(AIUnavailableError)
