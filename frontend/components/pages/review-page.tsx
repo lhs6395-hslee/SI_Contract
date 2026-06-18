@@ -115,6 +115,12 @@ export function ReviewPage() {
     new Set(extractedData?.confirmedTabs || [])
   );
 
+  // 차수/프로젝트 전환 시 confirmedTabs를 새 데이터 기준으로 재동기화.
+  // (useState는 마운트 1회만 초기화 → 이전 차수의 stale 확정 상태가 남아 위양성 표시되던 것 방지)
+  React.useEffect(() => {
+    setConfirmedTabs(new Set(extractedData?.confirmedTabs || []));
+  }, [revision, projectId]);  // eslint-disable-line react-hooks/exhaustive-deps
+
   const confirmTab = (tabId: string) => {
     setConfirmedTabs((prev) => {
       const next = new Set(prev);
@@ -918,6 +924,12 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
   const [costVal, setCostVal] = useState((E.cost?.value as number) ?? 0);
   const [profitVal, setProfitVal] = useState((E.profit?.value as number) ?? 0);
   const [indirectVal, setIndirectVal] = useState((E.indirectCost?.value as number) ?? 0);
+
+  // 천원 입력(콤마 포함) → 원 단위 정수. 비숫자/NaN은 0으로(NaN이 state·export에 영속 방지).
+  const parseThousandWon = (v: string): number => {
+    const n = Number(String(v).replace(/,/g, "").trim());
+    return Number.isFinite(n) ? Math.round(n) * 1000 : 0;
+  };
   const profitRate = revenueVal > 0 ? (profitVal / revenueVal * 100).toFixed(1) : "-";
   const costPct = revenueVal > 0 ? (costVal / revenueVal * 100).toFixed(1) : "-";
 
@@ -960,7 +972,7 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
         <Card className="p-5">
           <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">매출{E.revenue?.source === "수동 수정" && changed.revenue && String(changed.revenue.prev) !== String(revenueVal) && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">{revision > 0 ? `${revision}차 수정됨` : "수정됨"}</Badge>}{E.revenue?.source === "수동 수정" && !changed.revenue && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">수정됨</Badge>}</div>
           <div className="mt-1 flex items-baseline gap-1">
-            <EditableCell value={Math.round(revenueVal / 1000)} onChange={(v) => { const n = Number(v.replace(/,/g, "")) * 1000; setRevenueVal(n); updateField("revenue", String(n)); }} align="left" mono className="text-2xl font-bold" />
+            <EditableCell value={Math.round(revenueVal / 1000)} onChange={(v) => { const n = parseThousandWon(v); setRevenueVal(n); updateField("revenue", String(n)); }} align="left" mono className="text-2xl font-bold" />
             <span className="text-sm font-normal text-muted-foreground">천원</span>
           </div>
           <div className="text-xs text-muted-foreground mt-1">{cleanSource(E.revenue?.source) || "VAT 별도"}</div>
@@ -975,7 +987,7 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
         <Card className="p-5">
           <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">매입{E.cost?.source === "수동 수정" && changed.cost && String(changed.cost.prev) !== String(costVal) && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">{revision > 0 ? `${revision}차 수정됨` : "수정됨"}</Badge>}{E.cost?.source === "수동 수정" && !changed.cost && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">수정됨</Badge>}</div>
           <div className="mt-1 flex items-baseline gap-1">
-            <EditableCell value={Math.round(costVal / 1000)} onChange={(v) => { const n = Number(v.replace(/,/g, "")) * 1000; setCostVal(n); updateField("cost", String(n)); }} align="left" mono className="text-2xl font-bold" />
+            <EditableCell value={Math.round(costVal / 1000)} onChange={(v) => { const n = parseThousandWon(v); setCostVal(n); updateField("cost", String(n)); }} align="left" mono className="text-2xl font-bold" />
             <span className="text-sm font-normal text-muted-foreground">천원</span>
           </div>
           <div className="text-xs text-muted-foreground mt-1">{cleanSource(E.cost?.source) || "매출 대비"} · <span className="font-mono font-semibold">{costPct}%</span></div>
@@ -990,7 +1002,7 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
         <Card className="p-5">
           <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">간접비+일반관리비{E.indirectCost?.source === "수동 수정" && changed.indirectCost && String(changed.indirectCost.prev) !== String(indirectVal) && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">{revision > 0 ? `${revision}차 수정됨` : "수정됨"}</Badge>}{E.indirectCost?.source === "수동 수정" && !changed.indirectCost && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">수정됨</Badge>}</div>
           <div className="mt-1 flex items-baseline gap-1">
-            <EditableCell value={Math.round(indirectVal / 1000)} onChange={(v) => { const n = Number(v.replace(/,/g, "")) * 1000; setIndirectVal(n); updateField("indirectCost", String(n)); }} align="left" mono className="text-2xl font-bold" />
+            <EditableCell value={Math.round(indirectVal / 1000)} onChange={(v) => { const n = parseThousandWon(v); setIndirectVal(n); updateField("indirectCost", String(n)); }} align="left" mono className="text-2xl font-bold" />
             <span className="text-sm font-normal text-muted-foreground">천원</span>
           </div>
           <div className="text-xs text-muted-foreground mt-1">
@@ -1008,7 +1020,7 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
         <Card className="p-5 border-emerald-200 dark:border-emerald-800">
           <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">영업이익{E.profit?.source === "수동 수정" && changed.profit && String(changed.profit.prev) !== String(profitVal) && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">{revision > 0 ? `${revision}차 수정됨` : "수정됨"}</Badge>}{E.profit?.source === "수동 수정" && !changed.profit && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">수정됨</Badge>}</div>
           <div className="mt-1 flex items-baseline gap-1">
-            <EditableCell value={Math.round(profitVal / 1000)} onChange={(v) => { const n = Number(v.replace(/,/g, "")) * 1000; setProfitVal(n); updateField("profit", String(n)); }} align="left" mono className="text-2xl font-bold text-emerald-600" />
+            <EditableCell value={Math.round(profitVal / 1000)} onChange={(v) => { const n = parseThousandWon(v); setProfitVal(n); updateField("profit", String(n)); }} align="left" mono className="text-2xl font-bold text-emerald-600" />
             <span className="text-sm font-normal text-muted-foreground">천원</span>
           </div>
           <div className="text-xs text-muted-foreground mt-1">{cleanSource(E.profit?.source) ? `${cleanSource(E.profit?.source)} · ` : ""}이익률 <span className="font-mono font-semibold text-emerald-600">{profitRate}%</span></div>
