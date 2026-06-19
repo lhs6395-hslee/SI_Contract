@@ -181,15 +181,18 @@ CLASSIFY_PROMPT = """당신은 SI/MSP 사업 문서 분류 도우미입니다. �
 {text}
 \"\"\"
 
-다음 5개 카테고리 중 하나로 분류하세요:
+다음 6개 카테고리 중 하나로 분류하세요:
 - contract: 계약서, 업무위탁계약서, SLA, 부속계약서, 서명된 계약문서
 - internal: 내부 견적품의서, 사내 기안 문서 (GS네오텍 자체 양식)
 - vendor:   외부 협력사가 제출한 견적서
 - insurance: 보험료율 공문, 4대 보험료율 안내 공문서
+- execution_plan: **이미 작성된 우리(GS네오텍) 양식의 집행계획서** — 산출내역서/원가명세/
+  투입인원/공정표/현장조직 시트로 구성된 '완성 산출물'. 견적서·계약서가 아니라 결과물입니다.
+  (예: "집행계획서", "(최초)집행계획서", "수정집행" 머리글, 차수열(0차~) 금액표가 있으면 이 카테고리)
 - unknown:  위 어디에도 해당하지 않거나 판단 불가
 
 JSON 형식으로만 응답:
-{{"category":"contract|internal|vendor|insurance|unknown","confidence":0.0~1.0,"reason":"한 줄 사유"}}"""
+{{"category":"contract|internal|vendor|insurance|execution_plan|unknown","confidence":0.0~1.0,"reason":"한 줄 사유"}}"""
 
 
 def classify_document(filename: str, text: str) -> dict:
@@ -531,11 +534,135 @@ def chat_complete(message: str, system: str, max_tokens: int = 1024, user_id: st
     return invoke_bedrock(message, max_tokens=max_tokens, system=system, task_type="chat", user_id=user_id)
 
 
+# ─── 집행계획서 역추출(import) ─────────────────────────────
+# 이미 작성된 '집행계획서'(우리 산출물 양식)에서 데이터를 역추출해 0차로 복원한다.
+# 견적서 추출과 달리 입력이 '완성된 집행계획서'이며, PDF 표에 단위(천원/원) 라벨이
+# 없는 경우가 많아 단위 추론 오류(1000배) 위험이 크다 → 금액은 unitConfidence를 함께
+# 반환하고, 호출측(프론트)이 사용자에게 단위 확정을 강제한다.
+
+IMPORT_PROMPT = """당신은 GS네오텍의 **완성된 집행계획서**에서 데이터를 역추출하는 도우미입니다.
+아래는 이미 작성된 집행계획서(우리 양식)의 텍스트입니다. 견적서가 아니라 '결과물'입니다.
+
+{doc_block}
+
+이 집행계획서에서 다음을 추출하세요. **문서에 적힌 값을 그대로** 읽고, 없으면 null.
+추측으로 값을 지어내지 마세요(특히 금액).
+
+⚠️ 단위(천원/원): 집행계획서 금액표는 보통 '천원' 단위이나 라벨이 없을 수 있습니다.
+- 표 상단/머리글에 '[단위:천원]' 등이 있으면 그 단위로 판단하고 unitConfidence="high".
+- 단위 표기가 없어 퍼센트·자릿수로 추정했으면 unitConfidence="low".
+- 모든 금액은 **원 단위 정수로 환산**해서 넣되(천원이면 ×1000), 환산 근거가 불확실하면 low.
+
+다음 JSON으로만 응답:
+{{
+  "extracted": {{
+    "projectName":  {{"value": "사업명", "source": "출처", "confidence": "verified|guess|null"}},
+    "projectCode":  {{"value": "공사코드", "source": "...", "confidence": "..."}},
+    "client":       {{"value": "발주처(갑)", "source": "...", "confidence": "..."}},
+    "contractor":   {{"value": "계약처/수행사", "source": "...", "confidence": "..."}},
+    "contractType": {{"value": "계약방식(수의/경쟁 등)", "source": "...", "confidence": "..."}},
+    "pm":           {{"value": "현장소장/PM", "source": "...", "confidence": "..."}},
+    "salesOwner":   {{"value": "영업담당", "source": "...", "confidence": "..."}},
+    "startDate":    {{"value": "YYYY.MM.DD", "source": "...", "confidence": "..."}},
+    "endDate":      {{"value": "YYYY.MM.DD", "source": "...", "confidence": "..."}},
+    "writtenDate":  {{"value": "YYYY.MM.DD", "source": "...", "confidence": "..."}},
+    "fiscalYear":   {{"value": "YYYY", "source": "...", "confidence": "..."}},
+    "revenue":      {{"value": 0, "unit": "원", "unitConfidence": "high|low", "source": "...", "confidence": "..."}},
+    "cost":         {{"value": 0, "unit": "원", "unitConfidence": "...", "source": "...", "confidence": "..."}},
+    "profit":       {{"value": 0, "unit": "원", "unitConfidence": "...", "source": "...", "confidence": "..."}},
+    "scope":        {{"value": "사업범위/특기사항", "source": "...", "confidence": "..."}},
+    "specialNotes": {{"value": "특기사항", "source": "...", "confidence": "..."}},
+    "paymentTerms": {{"value": "수금조건", "source": "...", "confidence": "..."}}
+  }},
+  "costItems": [
+    {{"category": "fee|labor|bonus|wage|welfare|travel|vehicle|equipment|rent|transport|comm|print|safety|etc",
+      "name": "비목명", "spec": "", "unit": "",
+      "contractQty": 0, "contractPrice": 0, "contractAmount": 0,
+      "executionQty": 0, "executionPrice": 0, "executionAmount": 0,
+      "unitConfidence": "high|low", "source": "출처", "confidence": "verified|guess"}}
+  ],
+  "rates": {{
+    "indirectRate": {{"value": 0, "source": "..."}},
+    "adminRate": {{"value": 0, "source": "..."}},
+    "nationalPension": {{"value": 0, "source": "..."}},
+    "healthInsurance": {{"value": 0, "source": "..."}},
+    "employmentInsurance": {{"value": 0, "source": "..."}},
+    "industrialAccident": {{"value": 0, "source": "..."}}
+  }},
+  "importMeta": {{"unitGuessed": true, "missingFields": ["..."]}}
+}}
+- 자사 직접인력 급료/임금(labor/wage)은 견적서 추출 규칙과 동일하게 staffPlan 영역이므로
+  costItems에 넣지 마세요. 외주 수수료는 fee, 상여/복리후생은 bonus/welfare.
+- importMeta.unitGuessed: 단위를 라벨 없이 추정했으면 true. missingFields: 못 찾은 필드명 배열."""
+
+
+def import_execution_plan(documents: list[dict]) -> dict:
+    """완성된 집행계획서(우리 양식)에서 0차 ExtractedData를 역추출.
+
+    documents: [{"filename","text","images"}]. PDF 스캔본은 images(Vision) 포함.
+    반환: {extracted, costItems, rates, importMeta}. 금액엔 unitConfidence 포함 —
+    호출측이 사용자에게 단위/금액 확정을 강제해야 한다(1000배 단위오류 방지).
+    """
+    # 집행계획서 역추출 JSON은 extracted+costItems+rates로 출력이 길다 → 4096 cap에 걸려
+    # JSON이 잘리면 전체 파싱 실패(빈 fallback)로 모든 필드가 유실된다(실측에서 확인).
+    # extract_full/Vision의 2048 상향과 동일 취지로 여유 상한(8192)을 둔다.
+    # 집행계획서는 단일 문서이고 산출내역/요율 시트가 하단(4000자 기본 cap 밖)에 있어
+    # 비목·요율·영업담당이 누락되곤 한다(실측 확인). 단일 문서이므로 입력 상한을 크게 잡아
+    # 문서 전체를 보낸다(토큰 여유 충분).
+    raw = _call_claude(
+        IMPORT_PROMPT.format(doc_block=_doc_block(documents, limit=16000)),
+        max_tokens=8192, task_type="extract_full", images=_collect_images(documents),
+    )
+    return _parse_json(raw, fallback={"extracted": {}, "costItems": [], "rates": None,
+                                      "importMeta": {"unitGuessed": True, "missingFields": []}})
+
+
 # ─── 유틸 ─────────────────────────────────────────────────
 
 def _parse_json(text: str, fallback=None):
-    """응답에서 JSON 블록 추출."""
+    """응답에서 JSON 블록 추출.
+
+    모델이 JSON 뒤에 설명/표(markdown)를 덧붙이는 경우가 있어(실측 확인), 첫 '{'/'['부터
+    **균형 잡힌** JSON 값만 떼어낸다(문자열 리터럴 내부의 괄호는 무시). 단순 greedy 정규식은
+    뒤따르는 산문 속 ']'/'}'까지 삼켜 json.loads가 통째로 실패(빈 fallback)하던 문제를 해결.
+    """
     import re
+    if not text:
+        return fallback
+
+    start = next((i for i, ch in enumerate(text) if ch in "{["), None)
+    if start is not None:
+        open_ch = text[start]
+        close_ch = "}" if open_ch == "{" else "]"
+        depth = 0
+        in_str = esc = False
+        end = None
+        for i in range(start, len(text)):
+            ch = text[i]
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch == open_ch:
+                depth += 1
+            elif ch == close_ch:
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        if end is not None:
+            try:
+                return json.loads(text[start:end])
+            except json.JSONDecodeError:
+                pass
+
+    # 균형 추출 실패(트렁케이션 등) → 기존 greedy 폴백
     m = re.search(r"[\[{][\s\S]*[\]}]", text)
     if m:
         try:

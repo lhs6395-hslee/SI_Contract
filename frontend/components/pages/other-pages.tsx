@@ -225,6 +225,12 @@ export function ExportPage() {
 
   const doGenerate = async () => {
     if (!projectId || !extractedData) return;
+    // 가져온 집행계획서(import)의 금액 단위가 미확정이면 1차 진행 차단(1000배 오류 방지).
+    if (extractedData.importMeta && !extractedData.unitConfirmed) {
+      alert("가져온 집행계획서의 금액 단위(천원/원)를 먼저 확정해 주세요.\n리뷰 화면 상단에서 단위를 확정한 뒤 진행할 수 있습니다.");
+      setRoute("review");
+      return;
+    }
     setGenerating(true);
     setDownloaded(false);
     try {

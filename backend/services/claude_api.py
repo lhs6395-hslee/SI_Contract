@@ -23,6 +23,7 @@ from services.ai_core import (  # noqa: F401  (re-export)
     extract_section,
     cross_validate,
     chat_complete,
+    import_execution_plan,
     # 프롬프트/유틸 — 테스트·재사용 호환
     CLASSIFY_PROMPT,
     EXTRACT_PROMPT,

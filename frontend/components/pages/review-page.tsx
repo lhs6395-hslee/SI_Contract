@@ -177,6 +177,55 @@ export function ReviewPage() {
   const scheduleItems = extractedData?.schedule || [];
   const orgMembers = extractedData?.organization || [];
 
+  // ── 집행계획서 import 단위 확정 게이트 (1000배 단위오류 방지) ──
+  // import로 생성된 0차는 금액 단위가 추정값일 수 있다(unitGuessed/unitConfidence=low).
+  // 사용자가 천원/원을 확정(unitConfirmed)하기 전에는 익스포트/1차 진행을 차단한다.
+  const importMeta = extractedData?.importMeta;
+  const importPending = !!importMeta && !extractedData?.unitConfirmed;
+  const [unitChoice, setUnitChoice] = useState<"thousand" | "won">("thousand");
+  const AMOUNT_KEYS = ["revenue", "cost", "profit", "indirectCost"];
+  // import 0차는 "추출 금액 전부 미확인" — 사용자가 단위를 확정하기 전까지 모든 금액이 미확인.
+  // (unitConfidence=low는 더 강한 경고. 라벨이 있어도 자동확정하지 않고 한 번 확인을 강제한다.)
+  const unconfirmedAmountCount = React.useMemo(() => {
+    if (!importPending) return 0;
+    let n = AMOUNT_KEYS.filter((k) => E?.[k]?.value != null && E?.[k]?.value !== "").length;
+    n += costItems.filter((c) => (c.contractAmount || c.executionAmount || c.contractPrice || c.executionPrice)).length;
+    return n;
+  }, [importPending, E, costItems]);  // eslint-disable-line react-hooks/exhaustive-deps
+  const hasLowUnit = React.useMemo(() =>
+    AMOUNT_KEYS.some((k) => E?.[k]?.unitConfidence === "low") || costItems.some((c) => c.unitConfidence === "low"),
+    [E, costItems]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 단위 확정: 한 집행계획서는 단일 단위 → 모든 import 금액에 동일 factor 적용.
+  // 백엔드는 '천원' 가정으로 환산(×1000)했으므로, 실제 단위가 '원'이면 ÷1000로 되돌린다.
+  // 모든 금액을 high로 마킹하고 unitConfirmed=true → 배너/게이트 해제.
+  const confirmUnits = () => {
+    const factor = unitChoice === "won" ? 1 / 1000 : 1;
+    const adj = (n: unknown): number => {
+      const v = typeof n === "number" ? n : Number(n);
+      return Number.isFinite(v) ? Math.round(v * factor) : 0;
+    };
+    setExtractedData((prev) => {
+      if (!prev) return prev;
+      const ex = { ...(prev.extracted || {}) };
+      for (const k of AMOUNT_KEYS) {
+        const f = ex[k];
+        if (f && f.value != null && f.value !== "") {
+          ex[k] = { ...f, value: factor === 1 ? f.value : adj(f.value), unitConfidence: "high" };
+        }
+      }
+      const items = (prev.costItems || []).map((c) => ({
+        ...c,
+        contractPrice: factor === 1 ? c.contractPrice : adj(c.contractPrice),
+        contractAmount: factor === 1 ? c.contractAmount : adj(c.contractAmount),
+        executionPrice: factor === 1 ? c.executionPrice : adj(c.executionPrice),
+        executionAmount: factor === 1 ? c.executionAmount : adj(c.executionAmount),
+        unitConfidence: "high" as const,
+      }));
+      return { ...prev, extracted: ex as ExtractedData["extracted"], costItems: items, unitConfirmed: true };
+    });
+  };
+
   const tabStatus = (id: string): "ok" | "ready" | "warn" => {
     if (confirmedTabs.has(id)) return "ok";
     if (id === "basic") return basicFields > 0 && guessCount === 0 && missingCount === 0 ? "ready" : "warn";
@@ -604,6 +653,44 @@ export function ReviewPage() {
         </Card>
       )}
 
+      {importPending && (
+        <Alert variant="destructive" className="border-amber-300 bg-amber-50 dark:bg-amber-950/20">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <AlertTitle className="text-amber-800 dark:text-amber-200">PDF 추출 결과 — 금액·단위 확인 필수</AlertTitle>
+          <AlertDescription className="text-amber-700 dark:text-amber-300 space-y-2">
+            <p>
+              완성 집행계획서를 역추출했습니다.
+              {importMeta?.unitGuessed
+                ? " 금액 단위(천원/원)가 라벨 없이 추정되었습니다 — 반드시 확인하세요."
+                : hasLowUnit
+                  ? " 일부 금액의 단위가 불확실합니다."
+                  : " 단위 라벨이 감지되었으나, 자동확정하지 않습니다."}
+              {" "}미확인 금액 <strong className="font-mono">{unconfirmedAmountCount}</strong>건 — 단위를 확정해야 익스포트·수정집행을 진행할 수 있습니다.
+            </p>
+            {importMeta?.missingFields && importMeta.missingFields.length > 0 && (
+              <p className="text-xs">누락 추정 필드: {importMeta.missingFields.join(", ")}</p>
+            )}
+            <div className="flex items-center gap-2 flex-wrap pt-1">
+              <span className="text-xs font-medium">원본 PDF의 금액 단위:</span>
+              <select
+                value={unitChoice}
+                onChange={(e) => setUnitChoice(e.target.value as "thousand" | "won")}
+                className="h-8 text-sm rounded-md border border-input bg-background px-2 shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="thousand">천원 (기본 추정)</option>
+                <option value="won">원</option>
+              </select>
+              <Button size="sm" onClick={confirmUnits}>
+                <Check className="h-3.5 w-3.5 mr-1" /> 이 단위로 금액 확정
+              </Button>
+              <span className="text-[11px] text-muted-foreground">
+                {unitChoice === "won" ? "원 선택 시 추정 환산값을 ÷1000로 되돌립니다." : "천원이면 환산값을 그대로 사용합니다."}
+              </span>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {extractedData?.conflicts && extractedData.conflicts.length > 0 && (
         <Alert className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
           <Check className="h-4 w-4 text-blue-600" />
@@ -738,9 +825,14 @@ export function ReviewPage() {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground flex items-center gap-1">
-            <Check className="h-3 w-3 text-emerald-500" /> 자동 저장됨
+            {importPending
+              ? <><AlertTriangle className="h-3 w-3 text-amber-500" /> 금액 단위 확정 필요</>
+              : <><Check className="h-3 w-3 text-emerald-500" /> 자동 저장됨</>}
           </span>
-          <Button onClick={() => setRoute("export")}>익스포트로 <ArrowRight className="h-3.5 w-3.5 ml-1" /></Button>
+          <Button onClick={() => setRoute("export")} disabled={importPending}
+            title={importPending ? "상단에서 금액 단위를 확정해야 익스포트로 진행할 수 있습니다" : undefined}>
+            익스포트로 <ArrowRight className="h-3.5 w-3.5 ml-1" />
+          </Button>
         </div>
       </div>
     </div>
@@ -878,6 +970,18 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
   const changed = extractedData?.changedFields || {};
   const editLog = extractedData?.fieldEditLog || {};
   const aiSuggestions = extractedData?.aiSuggestions || {};
+  // import(집행계획서 역추출) 0차는 단위 확정 전까지 모든 금액이 '미확인'.
+  // low(단위 불확실)는 더 강한 경고색으로 구분.
+  const importPending = !!extractedData?.importMeta && !extractedData?.unitConfirmed;
+  const UnconfirmedBadge = ({ k }: { k: string }) => {
+    if (!importPending || E[k]?.value == null || E[k]?.value === "") return null;
+    const low = E[k]?.unitConfidence === "low";
+    return (
+      <Badge variant="outline" className={`text-[10px] ${low ? "text-red-600 border-red-300" : "text-amber-600 border-amber-300"}`}>
+        {low ? "단위 미확정" : "미확인"}
+      </Badge>
+    );
+  };
 
   const DATE_FIELDS = new Set(["startDate", "endDate", "writtenDate"]);
 
@@ -971,7 +1075,7 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
       {/* Stats — 클릭하여 수정 가능 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
         <Card className="p-5">
-          <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">매출{E.revenue?.source === "수동 수정" && changed.revenue && String(changed.revenue.prev) !== String(revenueVal) && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">{revision > 0 ? `${revision}차 수정됨` : "수정됨"}</Badge>}{E.revenue?.source === "수동 수정" && !changed.revenue && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">수정됨</Badge>}</div>
+          <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">매출<UnconfirmedBadge k="revenue" />{E.revenue?.source === "수동 수정" && changed.revenue && String(changed.revenue.prev) !== String(revenueVal) && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">{revision > 0 ? `${revision}차 수정됨` : "수정됨"}</Badge>}{E.revenue?.source === "수동 수정" && !changed.revenue && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">수정됨</Badge>}</div>
           <div className="mt-1 flex items-baseline gap-1">
             <EditableCell value={Math.round(revenueVal / 1000)} onChange={(v) => { const n = parseThousandWon(v); setRevenueVal(n); updateField("revenue", String(n)); }} align="left" mono className="text-2xl font-bold" />
             <span className="text-sm font-normal text-muted-foreground">천원</span>
@@ -986,7 +1090,7 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
           )}
         </Card>
         <Card className="p-5">
-          <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">매입{E.cost?.source === "수동 수정" && changed.cost && String(changed.cost.prev) !== String(costVal) && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">{revision > 0 ? `${revision}차 수정됨` : "수정됨"}</Badge>}{E.cost?.source === "수동 수정" && !changed.cost && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">수정됨</Badge>}</div>
+          <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">매입<UnconfirmedBadge k="cost" />{E.cost?.source === "수동 수정" && changed.cost && String(changed.cost.prev) !== String(costVal) && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">{revision > 0 ? `${revision}차 수정됨` : "수정됨"}</Badge>}{E.cost?.source === "수동 수정" && !changed.cost && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">수정됨</Badge>}</div>
           <div className="mt-1 flex items-baseline gap-1">
             <EditableCell value={Math.round(costVal / 1000)} onChange={(v) => { const n = parseThousandWon(v); setCostVal(n); updateField("cost", String(n)); }} align="left" mono className="text-2xl font-bold" />
             <span className="text-sm font-normal text-muted-foreground">천원</span>
@@ -1019,7 +1123,7 @@ function TabBasic({ onManualEdit, verifiedFields }: { onManualEdit: (key: string
           )}
         </Card>
         <Card className="p-5 border-emerald-200 dark:border-emerald-800">
-          <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">영업이익{E.profit?.source === "수동 수정" && changed.profit && String(changed.profit.prev) !== String(profitVal) && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">{revision > 0 ? `${revision}차 수정됨` : "수정됨"}</Badge>}{E.profit?.source === "수동 수정" && !changed.profit && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">수정됨</Badge>}</div>
+          <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">영업이익<UnconfirmedBadge k="profit" />{E.profit?.source === "수동 수정" && changed.profit && String(changed.profit.prev) !== String(profitVal) && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">{revision > 0 ? `${revision}차 수정됨` : "수정됨"}</Badge>}{E.profit?.source === "수동 수정" && !changed.profit && <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">수정됨</Badge>}</div>
           <div className="mt-1 flex items-baseline gap-1">
             <EditableCell value={Math.round(profitVal / 1000)} onChange={(v) => { const n = parseThousandWon(v); setProfitVal(n); updateField("profit", String(n)); }} align="left" mono className="text-2xl font-bold text-emerald-600" />
             <span className="text-sm font-normal text-muted-foreground">천원</span>

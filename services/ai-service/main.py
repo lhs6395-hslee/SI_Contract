@@ -1,7 +1,7 @@
 """AI Service — 독립 FastAPI 서비스. AI 로직은 backend와 공유하는 ai_core를 그대로 사용.
 
 backend(모놀리스)와 동일 코드(ai_core)를 쓰므로 USE_AI_SERVICE 토글 시 동작이 100% 같다.
-엔드포인트: classify / extract / extract-{costs,people,schedule,rates,org} / validate / chat.
+엔드포인트: classify / extract / extract-{costs,people,schedule,rates,org} / import / validate / chat.
 """
 
 import os
@@ -112,6 +112,13 @@ async def extract_rates(data: dict):
 @app.post("/extract-org")
 async def extract_org(data: dict):
     return ai_core.extract_org(data.get("documents", []))
+
+
+# ─── Import (완성 집행계획서 역추출 → 0차) ──────────────
+
+@app.post("/import")
+async def import_execution_plan(data: dict):
+    return ai_core.import_execution_plan(data.get("documents", []))
 
 
 # ─── Validate ─────────────────────────────────────────

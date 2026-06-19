@@ -43,6 +43,30 @@ export async function apiExtract(
   return res.json();
 }
 
+import type { CostItem as _CostItem, ExtractedField, Rates as _Rates } from "./types";
+
+export interface ImportResult {
+  extracted: Record<string, ExtractedField>;
+  costItems: _CostItem[];
+  rates: _Rates | null;
+  importMeta: { unitGuessed?: boolean; missingFields?: string[] };
+}
+
+/** 완성된 집행계획서(PDF/xlsx)를 역추출해 0차 데이터를 복원한다(견적서 추출과 별개). */
+export async function apiImport(
+  files: File[],
+  storedFiles?: { projectId: string; filenames: string[]; revision?: number },
+): Promise<ImportResult> {
+  const formData = new FormData();
+  files.forEach((f) => formData.append("files", f));
+  if (storedFiles && storedFiles.filenames.length > 0) {
+    formData.append("stored_files", JSON.stringify(storedFiles));
+  }
+  const res = await apiFetch("/api/import", { method: "POST", body: formData });
+  if (!res.ok) throw new Error(`집행계획서 가져오기 실패: ${res.status}`);
+  return res.json();
+}
+
 export async function apiValidate(data: Record<string, unknown>) {
   const res = await apiFetch("/api/validate", {
     method: "POST",

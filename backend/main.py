@@ -632,6 +632,44 @@ async def extract_org_endpoint(files: list[UploadFile] = File(default=[]), store
     return await _tab_extract("org", await _documents_from_request(files, stored_files))
 
 
+# ─── 집행계획서 역추출(import → 0차) ──────────────────────
+
+@app.post("/api/import")
+async def import_execution_plan_endpoint(
+    files: list[UploadFile] = File(default=[]),
+    stored_files: str = Form(default=""),
+    current_user: dict = Depends(require_auth),
+):
+    """완성된 집행계획서(PDF/xlsx)에서 0차 ExtractedData를 역추출.
+
+    견적서 추출(/api/extract)과 달리 입력이 '완성 산출물'이며, 금액 단위(천원/원) 라벨이
+    없는 경우가 많아 1000배 단위오류 위험이 크다 → 반환 금액에 unitConfidence가 포함되고,
+    importMeta.unitGuessed로 단위 추정 여부를 알린다. 호출측(프론트)이 사용자에게 단위
+    확정을 강제한다(자동확정 금지). 스캔본 PDF는 _doc_from_content가 Vision 이미지 첨부.
+    """
+    # stored_files가 특정 프로젝트를 참조하면 소유권 게이트(미인가 파일 접근 차단).
+    if stored_files:
+        try:
+            sf = json.loads(stored_files)
+        except (ValueError, TypeError):
+            sf = {}
+        _validate_revision(sf.get("revision"))
+        pid = sf.get("projectId")
+        if pid:
+            _validate_project_id(pid)
+            _assert_project_access(pid, current_user)
+
+    documents = await _documents_from_request(files, stored_files)
+    if not documents:
+        raise HTTPException(status_code=422, detail="가져올 파일이 필요합니다 (집행계획서 PDF/xlsx 업로드 또는 저장 파일 선택)")
+
+    if USE_AI_SERVICE:
+        return await _call_ai_service("/import", {"documents": documents})
+
+    from services.claude_api import import_execution_plan
+    return import_execution_plan(documents)
+
+
 # ─── 교차 검증 ────────────────────────────────────────────
 
 @app.post("/api/validate", dependencies=[Depends(require_auth)])

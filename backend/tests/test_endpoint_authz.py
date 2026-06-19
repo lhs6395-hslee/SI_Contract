@@ -91,3 +91,29 @@ def test_revision_range_validation(client_and_store):
     ps.save_project({"id": "p_test", "name": "P", "extracted": {}}, owner="test")
     r = client.get("/api/files/p_test?revision=-5", headers=_hdr(main, "test"))
     assert r.status_code == 422, r.text
+
+
+def test_import_requires_auth(client_and_store):
+    """/api/import 무토큰 → 401 (집행계획서 역추출도 인증 게이트)."""
+    client, main, ps = client_and_store
+    r = client.post("/api/import")
+    assert r.status_code == 401, r.text
+
+
+def test_import_empty_request_422(client_and_store):
+    """/api/import 파일/저장파일 없음 → 422 (빈 요청 가드)."""
+    client, main, ps = client_and_store
+    r = client.post("/api/import", headers=_hdr(main, "test"))
+    assert r.status_code == 422, r.text
+
+
+def test_import_stored_files_nonowner_blocked(client_and_store):
+    """/api/import stored_files가 타인 프로젝트면 404(소유권 게이트)."""
+    client, main, ps = client_and_store
+    ps.save_project({"id": "p_alice", "name": "A", "extracted": {}}, owner="alice@x.com")
+    r = client.post(
+        "/api/import",
+        headers=_hdr(main, "test"),
+        data={"stored_files": '{"projectId":"p_alice","filenames":["x.pdf"]}'},
+    )
+    assert r.status_code == 404, r.text

@@ -2,12 +2,12 @@
 
 import { useState, useRef, useCallback } from "react";
 import { useApp } from "@/lib/store";
-import { apiClassify, apiExtract, apiExtractCosts, apiExtractPeople, apiExtractSchedule, apiExtractRates, apiExtractOrg, apiUploadFiles, apiGetProjects, apiGetProject } from "@/lib/api";
+import { apiClassify, apiExtract, apiExtractCosts, apiExtractPeople, apiExtractSchedule, apiExtractRates, apiExtractOrg, apiUploadFiles, apiGetProjects, apiGetProject, apiImport } from "@/lib/api";
 import type { UploadedFile, FileCategory, ExtractedData } from "@/lib/types";
 import type { ProjectData } from "@/lib/storage";
 import {
   CloudUpload, Check, X, AlertTriangle, Loader2,
-  ChevronDown, ArrowRight, FolderOpen,
+  ChevronDown, ArrowRight, FolderOpen, FileUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ const CAT_LABEL: Record<FileCategory, string> = {
   internal: "견적품의서",
   vendor: "협력사 견적서",
   insurance: "보험료율 공문",
+  execution_plan: "완성 집행계획서",
   unknown: "미분류",
 };
 
@@ -28,11 +29,13 @@ const CAT_BADGE: Record<FileCategory, string> = {
   internal: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
   vendor: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
   insurance: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+  execution_plan: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300",
   unknown: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
 };
 
 function classifyFileFallback(filename: string) {
   const n = filename.toLowerCase();
+  if (/집행계획서|집행 계획서|수정집행/.test(n)) return { category: "execution_plan" as FileCategory, confidence: 0.68 };
   if (/계약서|업무위탁|sla/.test(n)) return { category: "contract" as FileCategory, confidence: 0.65 };
   if (/견적품의|품의서/.test(n)) return { category: "internal" as FileCategory, confidence: 0.62 };
   if (/보험.*요율|보험료율|공문/.test(n)) return { category: "insurance" as FileCategory, confidence: 0.70 };
@@ -62,6 +65,57 @@ export function UploadPage({ onComplete }: { onComplete?: (data: ExtractedData |
   const [importList, setImportList] = useState<ProjectData[]>([]);
   const [importLoading, setImportLoading] = useState(false);
   const [importingId, setImportingId] = useState<string | null>(null);
+  // 완성 집행계획서(PDF/xlsx) 역추출 가져오기 — doImport(프로젝트 복사)와 별개 경로
+  const planInputRef = useRef<HTMLInputElement>(null);
+  const [importingPlan, setImportingPlan] = useState(false);
+  const [importPlanError, setImportPlanError] = useState("");
+  const [importPlanElapsed, setImportPlanElapsed] = useState(0);
+
+  // 이미 작성된 집행계획서 PDF/xlsx를 역추출해 0차 데이터를 복원한다.
+  // 금액 단위(천원/원)는 사용자가 review에서 확정해야 1차 진행 가능(1000배 오류 방지).
+  const handleImportPlan = async (fileList: FileList) => {
+    const arr = Array.from(fileList);
+    if (arr.length === 0) return;
+    setImportingPlan(true);
+    setImportPlanError("");
+    setImportPlanElapsed(0);
+    const timer = setInterval(() => setImportPlanElapsed((s) => s + 1), 1000);
+    try {
+      const { extracted, costItems, rates, importMeta } = await apiImport(arr);
+      const pname = name
+        || (extracted?.projectName?.value != null ? String(extracted.projectName.value) : "")
+        || "가져온 집행계획서";
+      const result = {
+        projectName: pname,
+        extracted: (extracted || {}) as ExtractedData["extracted"],
+        costItems: (costItems || []) as ExtractedData["costItems"],
+        staffPlan: [] as ExtractedData["staffPlan"],
+        schedule: [] as ExtractedData["schedule"],
+        rates: rates || undefined,
+        organization: [] as ExtractedData["organization"],
+        conflicts: [],
+        files: arr.map((f) => ({ name: f.name, category: "execution_plan", size: f.size })),
+        importMeta: importMeta || { unitGuessed: true, missingFields: [] },
+        unitConfirmed: false,
+        _filesToSave: arr,
+      };
+      if (onComplete) {
+        onComplete(result);
+      } else {
+        const { _filesToSave, ...clean } = result;
+        void _filesToSave;
+        setExtractedData(clean);
+        setConflictCount(0);
+        setIsNewProject(false);
+        setRoute("review");
+      }
+    } catch (err) {
+      setImportPlanError(err instanceof Error ? err.message : "가져오기 실패");
+    } finally {
+      clearInterval(timer);
+      setImportingPlan(false);
+    }
+  };
 
   const openImport = async () => {
     setShowImport(true);
@@ -336,10 +390,23 @@ export function UploadPage({ onComplete }: { onComplete?: (data: ExtractedData |
             </Alert>
           )}
 
-          <div className="flex items-center justify-between pt-4 border-t">
-            <Button variant="ghost" size="sm" onClick={openImport}>
-              <FolderOpen className="h-3.5 w-3.5 mr-1.5" /> 이전 프로젝트에서 가져오기
-            </Button>
+          <div className="flex items-center justify-between pt-4 border-t flex-wrap gap-2">
+            <div className="flex items-center gap-1 flex-wrap">
+              <Button variant="ghost" size="sm" onClick={openImport}>
+                <FolderOpen className="h-3.5 w-3.5 mr-1.5" /> 이전 프로젝트에서 가져오기
+              </Button>
+              <input
+                ref={planInputRef}
+                type="file"
+                className="hidden"
+                accept=".pdf,.xlsx,.xls"
+                onChange={(e) => { if (e.target.files?.length) handleImportPlan(e.target.files); e.target.value = ""; }}
+              />
+              <Button variant="ghost" size="sm" onClick={() => planInputRef.current?.click()} disabled={importingPlan}
+                title="이미 작성된 집행계획서(PDF/xlsx)를 역추출해 0차로 가져옵니다. 계약서·견적서 없이도 가능합니다.">
+                <FileUp className="h-3.5 w-3.5 mr-1.5" /> 완성 집행계획서 가져오기 (PDF/xlsx)
+              </Button>
+            </div>
             <div className="flex items-center gap-3">
               <span className="text-xs text-muted-foreground">{files.length}개 파일</span>
               <Button onClick={startExtract} disabled={!canStart} size="lg">
@@ -353,6 +420,36 @@ export function UploadPage({ onComplete }: { onComplete?: (data: ExtractedData |
       {extracting && (
         <ExtractModal step={step} stepDetail={stepDetail} error={extractError} fileCount={files.length}
           onCancel={() => { setExtracting(false); setExtractError(""); }} />
+      )}
+
+      {(importingPlan || importPlanError) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md mx-4 rounded-xl border bg-card p-6 shadow-2xl">
+            <h2 className="text-lg font-bold flex items-center gap-2">
+              <FileUp className="h-5 w-5 text-primary" /> 완성 집행계획서 가져오기
+            </h2>
+            {importPlanError ? (
+              <>
+                <Alert variant="destructive" className="mt-4">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>{importPlanError}</AlertTitle>
+                  <AlertDescription>PDF/xlsx 형식이 올바른지, 손상되지 않았는지 확인해 주세요.</AlertDescription>
+                </Alert>
+                <div className="mt-4 flex justify-end">
+                  <Button variant="ghost" onClick={() => setImportPlanError("")}>닫기</Button>
+                </div>
+              </>
+            ) : (
+              <div className="mt-4 flex items-center gap-3 text-sm text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <span>집행계획서에서 데이터를 역추출 중… {importPlanElapsed}초 경과 (스캔본은 더 걸릴 수 있음)</span>
+              </div>
+            )}
+            <p className="mt-3 text-[11px] text-amber-700 dark:text-amber-400">
+              ⚠️ 추출된 금액의 단위(천원/원)는 다음 화면에서 직접 확정해야 합니다.
+            </p>
+          </div>
+        </div>
       )}
 
       {showImport && (
