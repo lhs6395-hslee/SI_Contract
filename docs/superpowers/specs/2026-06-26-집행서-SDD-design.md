@@ -36,8 +36,9 @@ SI_ Contract/
 │   ├── presets/templates/spec-template.md      # EARS 프리셋 (방법론 권장, §5)
 │   ├── templates/{plan,tasks}-template.md      # Spec Kit 기본
 │   ├── scripts/  memory/constitution.md        # Spec Kit + 우리 헌법 (§7)
-├── .claude/commands/speckit.*.md               # Claude 슬래시 커맨드 (신규)
-├── .codex/ (skills)                            # Codex skills (신규)
+├── .claude/skills/speckit-*/SKILL.md           # Claude 통합 = 스킬(/speckit-* 하이픈) (신규, 검증)
+├── .agents/skills/speckit-*/SKILL.md           # Codex 통합 = skills($speckit-*) (신규, 검증)
+├── CLAUDE.md / AGENTS.md                        # 기존 — SPECKIT 마커 블록만 append(덮어쓰기 X)
 ├── .claude/agents/{planner,executor,reviewer}.md  # 기존 — 보존
 ├── specs/
 │   ├── ai-agent-engineering-spec-2026.md       # 기존 하네스 스펙 — 별개, 보존
@@ -88,7 +89,7 @@ SI_ Contract/
 
 - 방식: EARS spec-template을 **조직 표준 프리셋**으로 패키징 (`.specify/presets/templates/spec-template.md`). `[공식 방법론]` ears-template 헤더 "조직 표준(권장): 프리셋", 방법론_구조 §8(`specify preset add`).
 - 근거: 집행서뿐 아니라 GS 다(多)프로젝트에서 재사용 — "다인·다프로젝트 spec 통일" 의도(의사결정_히스토리 ①)에 부합.
-- 검증 `[공식, 직접 확인]`: v0.11.8에 `specify preset search`/`specify preset add <name>` 존재, resolution stack presets=우선순위 2 (overrides>presets>extensions>core). **단서**: 방법론의 로컬 프리셋 생성 플래그 `--dev`는 현행 README에 없음 → 로컬 커스텀 프리셋 생성법(`--dev` vs `.specify/presets/templates/` 직접 배치)은 **설치 시 실거동 확인**.
+- 검증 `[공식, CLI help 직접 확인]`: v0.11.8 `specify preset add --dev <dir> --priority N` 존재 (`--dev`=로컬 디렉토리 등록, README엔 없으나 CLI help에 있음). resolution stack: overrides(1)>presets(2)>extensions(3)>core(4), `specify preset resolve spec-template`로 적용 확인. 기본 spec-template은 비EARS(검증). **Claude 통합은 `.claude/skills/speckit-*`(슬래시 `/speckit-*` 하이픈), Codex는 `.agents/skills`+`$speckit-*`** — 방법론 문서의 `/speckit.specify`(점)는 구버전 표기.
 - 출처: 방법론 폴더 `ears-spec-template.md` 이식.
 - 유지 규칙(헌법에 명문화): Spec Kit 업그레이드 시 spec-template 변경분과 **재병합 검토 필수**(#1356 미해결 → 자가유지 부담). EARS 5패턴 규약 문서를 `specs/` 하위에 독립 보관해 도구 미설치 시에도 규약 성립.
 - 대안(방법론 "프로젝트 일회성"): 단일 repo만 쓸 경우 `.specify/templates/overrides/`(우선순위 1) — 단 다프로젝트 재사용 불가.

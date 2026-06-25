@@ -87,3 +87,8 @@
 - `PostToolUse(Edit|Write)`: `scripts/agents/kairos.sh` lint
 
 **크로스플랫폼** — 설정 흐름: Claude Code → Kiro/Antigravity (단방향, 역방향 금지)
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+<!-- SPECKIT END -->
