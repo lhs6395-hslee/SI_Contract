@@ -50,3 +50,4 @@ senario/golden/
 senario/실파일테스트/
 .pipeline/_harness/
 .pipeline/실파일테스트/
+.sdd-backup/
