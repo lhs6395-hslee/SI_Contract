@@ -120,7 +120,7 @@ PM이 집행계획서를 작성할 때, 소스 문서에 노무비 금액이 없
     - 출처 A `executor.md:109` — "1M/M 급여 전액, 비율 계산 없음"
     - 출처 B `contract_builder.py:540` — `rate * months_before / 9`
     - 출처 C `REPORT_eps_values.md:155` — `=6500000*3/9` (months_before/9 방식)
-    - 현재 코드(출처 B·C)를 잠정 적용. 운영팀(FDE) 인터뷰로 확정 필요.
+    - 현재 코드(출처 B·C)를 잠정 적용. 사용자가 사내 기준 문서로 직접 확정 필요.
 
 - **FR-004b** (event): WHEN FR-004a의 상여금 산출이 완료되면, THE SYSTEM SHALL BudgetItem(category="bonus", execution_amount=산출합계)을 budget_items에 추가한다.
   - 코드 근거: `contract_builder.py:555-559`
@@ -131,7 +131,7 @@ PM이 집행계획서를 작성할 때, 소스 문서에 노무비 금액이 없
     - `[NEEDS CLARIFICATION]` 출처 A `company_standards.py:16-22` — 과장 5,500,000원
     - 출처 B `executor.md:101` — 과장 6,000,000원
     - 출처 C `REPORT_eps_values.md:144` — 과장 6,500,000원
-    - 현재 코드(출처 A, GRADE_RATES)를 잠정 적용. 운영팀 확정 필요.
+    - 현재 코드(출처 A, GRADE_RATES)를 잠정 적용. 사용자 확정 필요.
 
 - **FR-006** (unwanted): IF `holidays_in_period`가 빈 목록을 반환하면, THEN THE SYSTEM SHALL 상여금 BudgetItem을 생성하지 않는다.
   - 코드 근거: `contract_builder.py:522` (`if holidays:` 분기)
@@ -214,12 +214,12 @@ PM이 집행계획서를 작성할 때, 소스 문서에 노무비 금액이 없
    - 출처 A `executor.md:109`: "1M/M 급여 전액, 비율 없음"
    - 출처 B `contract_builder.py:540`: `rate * months_before / 9`
    - 출처 C `REPORT_eps_values.md:155`: `=6500000*3/9` (months_before=3 사례)
-   - 해소 방법: 운영팀(FDE) 인터뷰. 확정 후 SC-008 목표 수치 갱신 및 FR-004a 업데이트.
+   - 해소 방법: 사용자가 사내 기준 문서로 직접 확정. 확정 후 SC-008 목표 수치 갱신 및 FR-004a 업데이트.
 
 2. **직급 단가표 3중 충돌** (설계 §6-1 #1, EXE-03과 공유)
    - 출처 A `company_standards.py:16-22`: 과장 5,500,000원
    - 출처 B `executor.md:101`: 과장 6,000,000원
    - 출처 C `REPORT_eps_values.md:144`: 과장 6,500,000원
-   - 해소 방법: 운영팀(FDE) 인터뷰. 확정 후 GRADE_RATES 코드 수정 및 Assumptions 업데이트.
+   - 해소 방법: 사용자가 사내 기준 문서로 직접 확정. 확정 후 GRADE_RATES 코드 수정 및 Assumptions 업데이트.
 
 3. **명절 날짜 2028년 이후 미정의** — HOLIDAYS 테이블 연간 갱신 정책 미명시. 담당자 확인 필요.

@@ -158,9 +158,9 @@ SI_ Contract/
 - `.claude/settings.json` hooks = harness_check.py 단일 (guardian/kairos 부재 확인)
 - `.claude/agents/executor.md`, `.pipeline/analysis/REPORT_eps_values.md` — 충돌값 양측 대조
 
-## 11. 미해결 명확화 항목 (운영팀 인터뷰 대상)
+## 11. 미해결 명확화 항목 (사용자 직접 확정 대상)
 
-§6-1의 6건은 `/clarify` 단계에서 운영팀(FDE) 인터뷰로 해소. 본 SDD는 지어내지 않고 `[NEEDS CLARIFICATION]`으로 표면화만 한다.
+§6-1의 6건은 `/clarify` 단계에서 **사용자가 사내 기준(사규·공문·단가표 등)으로 직접 확정**한다. 본 SDD는 지어내지 않고 `[NEEDS CLARIFICATION]`으로 표면화만 한다. (방법론은 도구·프로세스만 차용하고 예시 도메인 어휘는 쓰지 않는다.)
 
 ## 12. 다음 단계
 

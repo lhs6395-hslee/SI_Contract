@@ -183,7 +183,7 @@ macOS에서 docker 이미지 빌드 시 한글 파일명이 NFD 인코딩으로 
 
 ## Assumptions
 
-(코드 현행값 = 잠정 — 권위 확정은 운영팀 인터뷰 후)
+(코드 현행값 = 잠정 — 권위 확정은 사용자 직접 확정 후)
 
 1. **HLOOKUP 범위**: 공통 시트 `$E$8:$P$149` — E열(0차)~P열(11차), 행 8~149. 메모리 `project_template_2026-06.md` 기술. 코드에서 직접 기록하지 않으며 양식 내장 수식으로 동작(잠정).
 2. **차수 열 범위**: 0차=E열, 1차=F열, ..., 11차=P열(총 12열). `rev_col` 구현으로 확정 (`utils.py:6-8`).
@@ -200,4 +200,4 @@ macOS에서 docker 이미지 빌드 시 한글 파일명이 NFD 인코딩으로 
 - **[NEEDS CLARIFICATION] SC-007**: revision > 11(MAX_REVISION 초과) 시 EXE-12 템플릿 생성 단계에서의 거부/에러 처리 기준.
   - 충돌 출처 1: `company_standards.py:12` — MAX_REVISION=11 상수 정의만, EXE-12 수준 처리 미명시.
   - 충돌 출처 2: `orchestrator.py:104-113` — revision 분기는 EXE-13(apply_revision_sheets)에 위임. EXE-12 거부 시점 불명.
-  - 확인 필요: EXE-12(템플릿 로드·기록)와 EXE-13(차수 시트 패칭) 중 어느 단계에서 MAX_REVISION 초과를 최초 거부해야 하는지 운영팀 확정 필요.
+  - 확인 필요: EXE-12(템플릿 로드·기록)와 EXE-13(차수 시트 패칭) 중 어느 단계에서 MAX_REVISION 초과를 최초 거부해야 하는지 사용자 확정 필요.

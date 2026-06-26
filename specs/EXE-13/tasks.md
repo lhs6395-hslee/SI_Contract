@@ -267,7 +267,7 @@ def test_zip_meta_consistency(tmp_path):
 ## Task 9: 6차 수정집행 체인 E2E (SC-006)
 
 **수용 기준**:
-- `test_revision_chain.py` 기준: rev 0~6 각 차수 파이프라인 완료, `"5-4. 수수료산출내역 (N차)"` H9/K9/X9 값이 골든 데이터와 1% 미만 오차.
+- `test_revision_chain.py` 기준: rev 0~6 각 차수 파이프라인 완료, `"5-4. 수수료산출내역 (N차)"` H9/K9/X9 값이 검증 사례셋 기준값과 1% 미만 오차.
 - 각 차수의 `"(N차)"` suffix 시트 7개 존재 + 이전 차수 보존 확인.
 
 **실패 테스트 (작성)**:
@@ -276,10 +276,10 @@ def test_zip_meta_consistency(tmp_path):
 
 **최소 구현**:
 - Task 1~8 완료 후 체인 E2E 실행.
-- 골든 데이터(`golden_docs.json`)에서 `B2_6차수정` 체인 케이스 실행.
+- 검증 사례셋(`golden_docs.json`)에서 `B2_6차수정` 체인 케이스 실행.
 - 실패 시 H9(당초)/K9(변경)/X9(당기) wiring 디버깅.
 
-**커밋**: `test(exe-13): 6차 수정집행 체인 E2E (골든 검증)`
+**커밋**: `test(exe-13): 6차 수정집행 체인 E2E (검증 사례셋 검증)`
 
 ---
 
@@ -293,4 +293,4 @@ def test_zip_meta_consistency(tmp_path):
 - [ ] Task 6: MAX_REVISION 초과 거부 게이트 (신규 구현)
 - [ ] Task 7: rev_col + E5 단위 테스트
 - [ ] Task 8: ZIP 메타 3파일 일관성
-- [ ] Task 9: 6차 체인 E2E 골든 검증
+- [ ] Task 9: 6차 체인 E2E 검증 사례셋 검증

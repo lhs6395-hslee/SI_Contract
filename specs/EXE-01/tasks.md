@@ -297,6 +297,6 @@ it("classifies at most 3 files concurrently", async () => {
 
 ## 미해결 사항 (구현 전 확인 필요)
 
-- **신뢰도 임계값 0.5**: `upload-page.tsx:185`의 `confidence < 0.5` 기준 변경 가능성 — 운영팀 확정 후 상수화 권장. `[NEEDS CLARIFICATION]` (spec.md Clarifications 1번 참조).
+- **신뢰도 임계값 0.5**: `upload-page.tsx:185`의 `confidence < 0.5` 기준 변경 가능성 — 사용자 확정 후 상수화 권장. `[NEEDS CLARIFICATION]` (spec.md Clarifications 1번 참조).
 - **6종 taxonomy 공식 정의**: 프롬프트 내 자연어 정의만 존재. 정책 문서 없이 변경 시 프롬프트만 수정하면 됨. `[NEEDS CLARIFICATION]` (spec.md Clarifications 2번 참조).
 - **분류 정확도 목표**: 베이스라인 측정 후 SC-003, SC-005 수치 결정. `[NEEDS CLARIFICATION]` (spec.md Clarifications 3번 참조).

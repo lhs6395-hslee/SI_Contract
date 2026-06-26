@@ -475,14 +475,14 @@ git commit -m "test(EXE-17): e2e account isolation — 8-step scenario"
 
 **Priority**: 해당 CLARIFICATION 해소 후 진행
 
-아래 항목은 `spec.md ## Clarifications Retained`에 기재된 [NEEDS CLARIFICATION] 항목이 운영팀 인터뷰로 해소된 후 spec·plan·tasks를 업데이트한다.
+아래 항목은 `spec.md ## Clarifications Retained`에 기재된 [NEEDS CLARIFICATION] 항목이 사용자 직접 확정 후 spec·plan·tasks를 업데이트한다.
 
 | 항목 | 대기 중인 결정 |
 |------|-------------|
-| PyJWT 미설치 허용 여부 | 보안팀 → 필수화 시 `requirements.txt` PyJWT 추가 + 폴백 제거 |
-| JWT_SECRET 필수화 | 보안팀 → 랜덤 폴백 제거 + Secrets Manager 강제 |
-| Basic Auth 토큰 유효기간 | 보안팀 → 28800초 유지 또는 단축 |
-| DynamoDB 파티션 키 추가 | 인프라팀 → 마이그레이션 계획 수립 |
+| PyJWT 미설치 허용 여부 | 사용자 확정 → 필수화 시 `requirements.txt` PyJWT 추가 + 폴백 제거 |
+| JWT_SECRET 필수화 | 사용자 확정 → 랜덤 폴백 제거 + Secrets Manager 강제 |
+| Basic Auth 토큰 유효기간 | 사용자 확정 → 28800초 유지 또는 단축 |
+| DynamoDB 파티션 키 추가 | 사용자 확정 → 마이그레이션 계획 수립 |
 
 ---
 

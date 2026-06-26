@@ -495,7 +495,7 @@ feat(sdd): EXE-06 Sprint_Contract 생성 spec/plan/tasks
 
 | 항목 | 현황 | 필요 조치 |
 |------|------|----------|
-| 직급단가표 3중 충돌 | 코드=550만, executor.md=600만, REPORT=650만 | 운영팀 확정 → 테스트 기대값 업데이트 |
+| 직급단가표 3중 충돌 | 코드=550만, executor.md=600만, REPORT=650만 | 사용자 확정 → 테스트 기대값 업데이트 |
 | MAX_REVISION 이중 게이트 | main.py:729 + contract_builder.py:307 양측 | 단일 진입점 결정 후 한 쪽 제거 |
 | 간접·관리비율 공문 근거 | 주석만 ("윤지민과장 25년 기준") | 공문 수령 후 DEFAULT_RATES 갱신 |
 | 보험요율 이원화 | DEFAULT_RATES 값 = 정산 기준인지 집행 기준인지 미정 | 집행/정산 구분 확인 후 갱신 |

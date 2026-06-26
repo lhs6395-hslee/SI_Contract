@@ -317,12 +317,12 @@ def test_no_auto_items_no_standards_conflict():
 ## [NEEDS CLARIFICATION] 대기 Tasks
 
 아래 tasks는 충돌 해소 없이는 수치 기준을 설정할 수 없다.
-충돌 해소(운영팀 인터뷰) 후 수용기준에 수치를 채워 착수한다.
+충돌 해소(사용자 직접 확정) 후 수용기준에 수치를 채워 착수한다.
 
 | Task ID | 대기 NC | 착수 조건 |
 |---------|---------|---------|
-| T-NC-01 | 직급 단가표 3중 충돌 (spec Clarifications #1) | 운영팀 인터뷰 후 단일 GRADE_RATES 확정 |
-| T-NC-02 | 상여금 공식 충돌 (spec Clarifications #2) | `전액` vs `rate*months/9` 중 어느 공식 사용 확정 |
+| T-NC-01 | 직급 단가표 3중 충돌 (spec Clarifications #1) | 사용자가 사내 기준 문서로 단일 GRADE_RATES 직접 확정 |
+| T-NC-02 | 상여금 공식 충돌 (spec Clarifications #2) | `전액` vs `rate*months/9` 중 어느 공식 사용인지 사용자 직접 확정 |
 | T-NC-03 | 보험요율 집행/정산 이원화 (spec Clarifications #3) | 적용 기준연도·갱신 정책 공문 확보 |
 | T-NC-04 | 간접/관리비율 공문 (spec Clarifications #4) | 담당자 공문 경로 확인 |
 | T-NC-05 | 하도급노무비율 수치 (spec Clarifications #5) | 안전보건팀 공문 수치 확인 |

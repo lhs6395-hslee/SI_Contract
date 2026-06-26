@@ -172,10 +172,10 @@ owner 필드가 없는 기존(레거시) 프로젝트는 admin 소유로 간주�
 
 설계 §6-1 기준 EXE-17에 직접 해당하는 충돌/미확정 항목:
 
-1. **[NEEDS CLARIFICATION]** PyJWT 미설치 운영 환경 허용 여부 — `cognito_auth.py:108-109`는 클레임+kid 검증만으로 폴백 처리하나, 프로덕션에서 서명 미검증 상태가 허용 기준인지 정책 문서에 명시되어 있지 않음. 확인 필요: 운영팀(보안) + PyJWT 의존성 설치 정책.
+1. **[NEEDS CLARIFICATION]** PyJWT 미설치 운영 환경 허용 여부 — `cognito_auth.py:108-109`는 클레임+kid 검증만으로 폴백 처리하나, 프로덕션에서 서명 미검증 상태가 허용 기준인지 정책 문서에 명시되어 있지 않음. 사용자가 사내 기준으로 직접 확정 필요 (PyJWT 의존성 설치 정책 포함).
 
 2. **[NEEDS CLARIFICATION]** JWT_SECRET 미설정 시 랜덤 폴백 허용 여부 — `main.py:1055-1057`에서 WARNING 로그를 남기나, EKS 멀티워커 환경에서 실질적으로 토큰 검증 실패를 야기함. Secrets Manager 필수화 여부 미확정.
 
-3. **[NEEDS CLARIFICATION]** Basic Auth 토큰 유효기간(28,800초) 운영 정책 기준 — 코드 상수값이나 보안 정책 문서 근거 없음. 확인 필요: 보안팀.
+3. **[NEEDS CLARIFICATION]** Basic Auth 토큰 유효기간(28,800초) 운영 정책 기준 — 코드 상수값이나 보안 정책 문서 근거 없음. 사용자가 사내 보안 기준으로 직접 확정 필요.
 
-4. **[NEEDS CLARIFICATION]** DynamoDB 테이블에 user별 파티션 키 추가 계획 — `project_store.py:289-290`에 "user별 파티션 키가 없어 query 전환 불가 — scan 1회로 통합" 주석이 있으나, 향후 아키텍처 전환 계획 유무 불명. 확인 필요: 인프라팀.
+4. **[NEEDS CLARIFICATION]** DynamoDB 테이블에 user별 파티션 키 추가 계획 — `project_store.py:289-290`에 "user별 파티션 키가 없어 query 전환 불가 — scan 1회로 통합" 주석이 있으나, 향후 아키텍처 전환 계획 유무 불명. 사용자가 사내 인프라 계획 문서로 직접 확정 필요.

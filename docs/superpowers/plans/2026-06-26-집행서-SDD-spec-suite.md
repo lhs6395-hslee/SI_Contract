@@ -525,7 +525,7 @@ git add specs && git commit -m "fix(sdd): cross-spec consistency (analyze/checkl
 
 ---
 
-### Task 7: [NEEDS CLARIFICATION] 집계 → 인터뷰 질문지
+### Task 7: [NEEDS CLARIFICATION] 집계 → 사용자 확정 목록
 
 **Files:** Create `specs/CLARIFICATIONS.md`
 
@@ -536,16 +536,16 @@ grep -rn "NEEDS CLARIFICATION" specs/EXE-* | tee specs/_nc_raw.txt
 wc -l specs/_nc_raw.txt
 ```
 
-- [ ] **Step 2: 9-카테고리 인터뷰 질문지 작성**
+- [ ] **Step 2: 사용자 확정 항목 목록 작성**
 
-`specs/CLARIFICATIONS.md`에 수집 항목을 카테고리별로 정리 (설계 §6-1 6대 충돌 포함: 직급단가표·상여공식·보험요율·간접/관리비율 근거·수수료코드·하도급노무비율). 방법론 §12(9-카테고리) 형식.
+`specs/CLARIFICATIONS.md`에 수집 항목을 카테고리별로 정리 (설계 §6-1 6대 충돌 포함: 직급단가표·상여공식·보험요율·간접/관리비율 근거·수수료코드·하도급노무비율). **사용자가 사내 기준(사규·공문·단가표)으로 직접 확정**하는 목록 형식.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 rm specs/_nc_raw.txt
 git add specs/CLARIFICATIONS.md
-git commit -m "docs(sdd): aggregate NEEDS CLARIFICATION → interview questionnaire"
+git commit -m "docs(sdd): aggregate NEEDS CLARIFICATION → user-confirmation list"
 ```
 
 ---

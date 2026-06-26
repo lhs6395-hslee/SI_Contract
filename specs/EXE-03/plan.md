@@ -137,8 +137,8 @@ SprintContract (EXE-06으로 전달)
 
 | # | 항목 | 영향 컴포넌트 | 해소 경로 |
 |---|------|------------|---------|
-| P-1 | 직급 단가표 단가 3중 충돌 | `company_standards.py:16-22` | 운영팀 인터뷰 → 단일 출처 확정 → GRADE_RATES 수정 |
-| P-2 | 상여금 공식 3중 충돌 (`전액` vs `/9`) | `contract_builder.py:540` | 운영팀 인터뷰 → 코드 공식 확정 |
+| P-1 | 직급 단가표 단가 3중 충돌 | `company_standards.py:16-22` | 사용자가 사내 기준 문서로 단일 출처 직접 확정 → GRADE_RATES 수정 |
+| P-2 | 상여금 공식 3중 충돌 (`전액` vs `/9`) | `contract_builder.py:540` | 사용자가 사내 기준으로 적용 공식 직접 확정 |
 | P-3 | 보험요율 집행/정산 이원화 | `company_standards.py:30-34` | 연도 기준 정책 공문 확보 |
 | P-4 | 간접/관리비율 공문 경로 | `company_standards.py:28-29` | 담당자 경로 확인 |
 | P-5 | 하도급노무비율 수치 | `executor.md:153` | 안전보건팀 공문 |

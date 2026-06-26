@@ -134,7 +134,7 @@ AI가 각 파일의 종류를 자동으로 판별해 레이블(카테고리·신
 
 ## Clarifications Retained
 
-1. **[NEEDS CLARIFICATION] 신뢰도 임계값 결정 근거**: `upload-page.tsx:185`의 `confidence < 0.5` 임계값은 코드에서 임의로 설정된 것으로 보이며, 설계 문서·운영 정책 내 수치 근거 없음. 운영팀 인터뷰로 확정 필요.
+1. **[NEEDS CLARIFICATION] 신뢰도 임계값 결정 근거**: `upload-page.tsx:185`의 `confidence < 0.5` 임계값은 코드에서 임의로 설정된 것으로 보이며, 설계 문서·운영 정책 내 수치 근거 없음. 사용자가 사내 기준으로 직접 확정 필요.
    - 출처 A: `upload-page.tsx:185` — `confidence < 0.5`
    - 출처 B: 설계 §6 및 `constitution.md` — 해당 임계값 불기재
 

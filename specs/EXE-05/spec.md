@@ -125,7 +125,7 @@
 ## Success Criteria (측정형)
 
 - **SC-001**: `/api/validate` 응답 시간이 `[NEEDS CLARIFICATION: 목표 응답 시간 미정. Bedrock 호출 포함 시 P95 기준 수립 필요]` 이하.
-- **SC-002**: 유형 A/A'/B/C/D 각각에 대한 골든셋 테스트 케이스에서 **감지율 100%** (0건 누락 FAIL). 골든셋 건수: `[NEEDS CLARIFICATION: 골든셋 정의 미완]`.
+- **SC-002**: 유형 A/A'/B/C/D 각각에 대한 검증 사례셋 테스트 케이스에서 **감지율 100%** (0건 누락 FAIL). 검증 사례셋 건수: `[NEEDS CLARIFICATION: 검증 사례셋 정의 미완]`.
 - **SC-003**: 유형 A' 충돌이 감지된 경우 자동 병합 발생 건수 **0건** — 반드시 사용자 선택 후 처리.
 - **SC-004**: 충돌이 1건 이상인 상태에서 익스포트를 시도하는 경우 차단 성공률 **100%** (프론트엔드 UI 게이트 기준). `[NEEDS CLARIFICATION: 익스포트 버튼 disabled 조건의 정확한 구현 위치(review-page.tsx 해당 라인) 확인 후 측정 기준 및 테스트 추가 필요]`
 - **SC-005**: 모든 충돌이 해결된 후 `extractedData.conflicts.length === 0`이고 `conflictCount === 0`인 상태가 review-page에서 확인 가능 — 충돌 알림 배너 미표시.
@@ -161,7 +161,7 @@
 ## Assumptions
 
 1. `cross_validate`의 Bedrock 호출 프롬프트(`VALIDATE_PROMPT`, `ai_core.py:509-519`)는 유형 A/A'/B/C/D를 명시적 유형 코드로 반환하지 않고 `"mismatch|missing|warning"` 분류와 `field`/`message`로 반환한다 — 프론트의 `Conflict.type` 필드와 매핑은 현행 코드 기준 잠정. [공식 코드: `ai_core.py:514-518`]
-2. 충돌 감지는 Bedrock AI 기반(비결정성) — 동일 입력에 대해 동일 충돌을 항상 감지한다고 보장되지 않는다. 골든셋 검증은 복수 시드로 반복 실행 필요.
+2. 충돌 감지는 Bedrock AI 기반(비결정성) — 동일 입력에 대해 동일 충돌을 항상 감지한다고 보장되지 않는다. 검증 사례셋 기반 검증은 복수 시드로 반복 실행 필요.
 3. `USE_AI_SERVICE=true` 환경에서는 `/api/validate` 호출이 `ai-service`로 프록시된다(`main.py:678-680`). 이 경로의 동작은 EXE-05 스코프 동일.
 4. 현재 `cross_validate`는 견적서 추출 데이터 전체(`data: dict`)를 받아 교차 검증하며, 유형 A/A' 감지를 위한 다중 견적서 식별은 Bedrock 프롬프트에 의존한다 — AI 오감지 가능성 있음 (잠정).
 5. 충돌 해결 UI(ConflictsPage)는 프론트엔드 전용 상태(`picks`, `customValues`) 기반이며 별도 백엔드 해결 API 엔드포인트는 없다. 해결 결과는 `extractedData` 업데이트 후 저장 시 백엔드 `conflict_resolutions`에 반영된다.
@@ -175,5 +175,5 @@
 1. **유형별 감지 커버리지**: `VALIDATE_PROMPT`(ai_core.py:509-519)가 유형 C(견적서 내 동일 품명 중복)와 유형 D(행 합산 ≠ 명시 합계)를 감지하도록 설계됐는지, 아니면 별도 결정론 로직이 필요한지 확인 필요.
 2. **익스포트 차단 구현 위치**: 프론트엔드에서 `conflictCount > 0`일 때 익스포트 버튼이 어디서 어떻게 차단되는지 — review-page.tsx의 정확한 disabled 조건 재확인 필요.
 3. **SC-001 응답 시간 목표**: `/api/validate` P95 응답 시간 수치 — Bedrock 호출 포함 베이스라인 측정 후 확정.
-4. **SC-002 골든셋 정의**: 유형별 대표 테스트 케이스 건수 및 기준 — 운영팀(FDE) 인터뷰 대상.
+4. **SC-002 검증 사례셋 정의**: 유형별 대표 테스트 케이스 건수 및 기준 — 사용자가 사내 기준으로 직접 확정 필요.
 5. **수수료 코드 1/2/3 판단 기준**: `contract_builder.py`의 `ConflictResolution(conflict_type="자동계산중복"/"연도배분확인"/"급료단가확인")` 등 내부 생성 충돌 유형과 사용자 대면 A/A'/B/C/D 유형의 관계 — 설계 §6-1 5번 항목.

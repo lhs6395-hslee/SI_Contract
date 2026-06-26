@@ -1,9 +1,9 @@
-# 집행서 SDD — [NEEDS CLARIFICATION] 집계 (운영팀 인터뷰 질문지)
+# 집행서 SDD — [NEEDS CLARIFICATION] 집계 (사용자 직접 확정 목록)
 
 > 생성: 2026-06-26 · 17기능 spec.md의 `[NEEDS CLARIFICATION]` 자동 집계.
-> 방법론 `/clarify` 단계 입력 — 운영팀(FDE) 인터뷰로 해소. 값 미창작: 미확정은 채우지 않고 표면화만 한다.
+> **사용자가 사내 기준(사규·공문·단가표 등)으로 직접 확정**한다. 값 미창작: 미확정은 채우지 않고 표면화만 한다.
 
-## 최우선 — 설계 §6-1 강제 충돌 6건 (출처 2개+ 충돌)
+## 최우선 — 설계 §6-1 강제 충돌 6건 (출처 2개+ 충돌, 사용자 확정 필요)
 
 1. **직급 단가표 3중 충돌** — company_standards.py:16(과장550만) / executor.md:101(600만) / REPORT_eps_values.md:144(650만). 귀속: EXE-03, EXE-09
 2. **상여금 공식 충돌** — executor.md:109(1M/M 전액) / contract_builder.py:540(rate×months/9) / REPORT_eps_values.md:155((3/9)×단가). 귀속: EXE-09
@@ -17,13 +17,13 @@
 ### EXE-01 (5)
 - SC-003**: `category: "unknown"` + `confidence < 0.5` 인 경우 프론트엔드 폴백 적용 후 `category` 값이 `"unknown"` 이외의 값으로 갱신되는 비율 — [NEEDS CLARIFICATION: 파일명에 키워드가 없는 경우 폴백도 "unknown"을 반환할 수 있음. 목표 커버리지 수치 미정].
 - SC-005**: AI 호출 실패 시 폴백 분류 결과 반환까지 소요 시간 ≤ [NEEDS CLARIFICATION: 타임아웃 상한 미명시. `ai_core.py`의 Bedrock `read_timeout=60` (`ai_core.py:26`) 이후 fallback 반환].
-- 1. **[NEEDS CLARIFICATION] 신뢰도 임계값 결정 근거**: `upload-page.tsx:185`의 `confidence < 0.5` 임계값은 코드에서 임의로 설정된 것으로 보이며, 설계 문서·운영 정책 내 수치 근거 없음. 운영팀 인터뷰로 확정 필요.
+- 1. **[NEEDS CLARIFICATION] 신뢰도 임계값 결정 근거**: `upload-page.tsx:185`의 `confidence < 0.5` 임계값은 코드에서 임의로 설정된 것으로 보이며, 설계 문서·운영 정책 내 수치 근거 없음. 사용자가 사내 기준으로 직접 확정 필요.
 - 2. **[NEEDS CLARIFICATION] 6종 taxonomy 공식 운영 정의**: 현재 6종(`contract/internal/vendor/insurance/execution_plan/unknown`) 정의는 AI 프롬프트 내 자연어 설명만 존재 (`ai_core.py:184-192`). 기획서·공식 운영 정책 문서의 별도 정의 여부 미확인.
 - 3. **[NEEDS CLARIFICATION] 분류 정확도 SC 목표 수치**: SC-003의 폴백 커버리지, SC-005의 타임아웃 상한이 미정. 베이스라인 측정 후 목표 수치 결정 필요.
 
 ### EXE-02 (5)
 - 단일 출처 값만 인용; 출처 없음 또는 충돌 시 `[NEEDS CLARIFICATION]`.
-- SC-005**: 추출 정확도(골든셋 대비 필드 정확 일치율) 목표 — `[NEEDS CLARIFICATION: 베이스라인 측정 후 목표 수치 확정. 현재 단일 출처 없음.]`
+- SC-005**: 추출 정확도(검증 사례셋 대비 필드 정확 일치율) 목표 — `[NEEDS CLARIFICATION: 베이스라인 측정 후 목표 수치 확정. 현재 단일 출처 없음.]`
 - SC-006**: `/api/extract-costs` 응답 시간(P95) — `[NEEDS CLARIFICATION: 부하 테스트 기준선 미정.]`
 - 클라이언트 파일 크기 제한**: `_check_upload_size` 적용 (`main.py:550`). 제한 수치는 `[NEEDS CLARIFICATION: main.py의 상한값 직접 확인 필요 — 이 spec 작성 범위에서 해당 라인 미읽음]`.
 - 이 기능에 `[NEEDS CLARIFICATION]` 강제 항목(설계 §6-1)은 없다. 추출 동작은 코드로 확정됨.
@@ -40,7 +40,7 @@
 - 견적서 내 동일 품명 중복(유형 C): `[NEEDS CLARIFICATION: 유형 C는 cross_validate 프롬프트(ai_core.py:509-519)의 "mismatch|missing|warning" 분류로 커버되는지, 별도 프론트 처리가 있는지 확인 필요]`
 - `[NEEDS CLARIFICATION: 익스포트 차단의 정확한 구현 위치 — review-page.tsx에서 export 버튼의 disabled 조건을 코드로 재확인 필요]`
 - SC-001**: `/api/validate` 응답 시간이 `[NEEDS CLARIFICATION: 목표 응답 시간 미정. Bedrock 호출 포함 시 P95 기준 수립 필요]` 이하.
-- SC-002**: 유형 A/A'/B/C/D 각각에 대한 골든셋 테스트 케이스에서 **감지율 100%** (0건 누락 FAIL). 골든셋 건수: `[NEEDS CLARIFICATION: 골든셋 정의 미완]`.
+- SC-002**: 유형 A/A'/B/C/D 각각에 대한 검증 사례셋 테스트 케이스에서 **감지율 100%** (0건 누락 FAIL). 검증 사례셋 건수: `[NEEDS CLARIFICATION: 검증 사례셋 정의 미완]`.
 - SC-004**: 충돌이 1건 이상인 상태에서 익스포트를 시도하는 경우 차단 성공률 **100%** (프론트엔드 UI 게이트 기준). `[NEEDS CLARIFICATION: 익스포트 버튼 disabled 조건의 정확한 구현 위치(review-page.tsx 해당 라인) 확인 후 측정 기준 및 테스트 추가 필요]`
 
 ### EXE-06 (14)
@@ -52,7 +52,7 @@
 - 대리: company_standards.py=450만 vs executor.md=500만 / REPORT=550만 `[NEEDS CLARIFICATION]`
 - 사원: company_standards.py=350만 vs executor.md=450만 `[NEEDS CLARIFICATION]`
 - 5. **DEFAULT_RATES(잠정)**: 간접 1.9%/관리 3.0%/국민연금 4.5%(집행기준 4.75%와 충돌)/건강보험 4.0041%(집행기준 4.0674%와 충돌)/산재 0.766%(집행기준 0.796%와 충돌)/고용보험 1.75%. (`company_standards.py:27-34` [`공식 코드`]) — 현행값은 정산 기준 추정이나 집행 기준과 충돌. Clarifications Retained 항목 4 참조 `[NEEDS CLARIFICATION]`. "윤지민과장 문의 25년 기준" 주석 근거, 공문 경로 미확정.
-- 아래 항목은 설계 §6-1(강제 `[NEEDS CLARIFICATION]`)에서 이월한 미해결 충돌로, 운영팀(FDE) 인터뷰로 확정 전까지 임의값 생성 금지.
+- 아래 항목은 설계 §6-1(강제 `[NEEDS CLARIFICATION]`)에서 이월한 미해결 충돌로, 사용자가 사내 기준으로 직접 확정 전까지 임의값 생성 금지.
 - 1. **직급 단가표 2중 이상 충돌 (전 직급)** `[NEEDS CLARIFICATION]`
 - 근거: "윤지민과장 25년 기준" 주석만, 공문 경로/문서 없음 → `[NEEDS CLARIFICATION]`
 - DEFAULT_RATES의 현행 코드값이 어느 기준연도인지, 갱신 정책이 없음 → `[NEEDS CLARIFICATION]`
@@ -121,15 +121,15 @@
 - 해소 전까지 FR-013 및 SC-003 본문에 [NEEDS CLARIFICATION] 유지.
 
 ### EXE-16 (3)
-- SC-006**: AI 이슈 탐지 정밀도 목표 — `[NEEDS CLARIFICATION]` (골든셋 검증 베이스라인 후 목표 수립 필요. 현재 정밀도·재현율 목표 수치 없음.)
+- SC-006**: AI 이슈 탐지 정밀도 목표 — `[NEEDS CLARIFICATION]` (검증 사례셋 기준 베이스라인 후 목표 수립 필요. 현재 정밀도·재현율 목표 수치 없음.)
 - SC-007**: Bedrock 응답 지연(p95) 목표 — `[NEEDS CLARIFICATION]` (SLA 수치 미정. read_timeout=60초 설정 있으나 p95 목표 미명시. `ai_core.py:26` 참조)
 - 4. **Bedrock 비용**: Sonnet 모델 호출당 토큰 비용이 발생하며, Haiku 대비 고비용. 토큰 상한(max_tokens=256)으로 응답 비용을 제한. 비용 기준은 `[NEEDS CLARIFICATION]` (단가표 미첨부).
 
 ### EXE-17 (4)
-- 1. **[NEEDS CLARIFICATION]** PyJWT 미설치 운영 환경 허용 여부 — `cognito_auth.py:108-109`는 클레임+kid 검증만으로 폴백 처리하나, 프로덕션에서 서명 미검증 상태가 허용 기준인지 정책 문서에 명시되어 있지 않음. 확인 필요: 운영팀(보안) + PyJWT 의존성 설치 정책.
+- 1. **[NEEDS CLARIFICATION]** PyJWT 미설치 운영 환경 허용 여부 — `cognito_auth.py:108-109`는 클레임+kid 검증만으로 폴백 처리하나, 프로덕션에서 서명 미검증 상태가 허용 기준인지 정책 문서에 명시되어 있지 않음. 사용자가 사내 기준으로 직접 확정 필요 (PyJWT 의존성 설치 정책 포함).
 - 2. **[NEEDS CLARIFICATION]** JWT_SECRET 미설정 시 랜덤 폴백 허용 여부 — `main.py:1055-1057`에서 WARNING 로그를 남기나, EKS 멀티워커 환경에서 실질적으로 토큰 검증 실패를 야기함. Secrets Manager 필수화 여부 미확정.
-- 3. **[NEEDS CLARIFICATION]** Basic Auth 토큰 유효기간(28,800초) 운영 정책 기준 — 코드 상수값이나 보안 정책 문서 근거 없음. 확인 필요: 보안팀.
-- 4. **[NEEDS CLARIFICATION]** DynamoDB 테이블에 user별 파티션 키 추가 계획 — `project_store.py:289-290`에 "user별 파티션 키가 없어 query 전환 불가 — scan 1회로 통합" 주석이 있으나, 향후 아키텍처 전환 계획 유무 불명. 확인 필요: 인프라팀.
+- 3. **[NEEDS CLARIFICATION]** Basic Auth 토큰 유효기간(28,800초) 운영 정책 기준 — 코드 상수값이나 보안 정책 문서 근거 없음. 사용자가 사내 보안 기준으로 직접 확정 필요.
+- 4. **[NEEDS CLARIFICATION]** DynamoDB 테이블에 user별 파티션 키 추가 계획 — `project_store.py:289-290`에 "user별 파티션 키가 없어 query 전환 불가 — scan 1회로 통합" 주석이 있으나, 향후 아키텍처 전환 계획 유무 불명. 사용자가 사내 인프라 계획 문서로 직접 확정 필요.
 
 
 **총 집계: 83건** (boilerplate 제외)

@@ -145,7 +145,7 @@ git commit -m "test(EXE-15): Stage 2 충돌 해결 검증 테스트"
 **수용 기준**:
 - expected_salary 산출 (FR-011a) → 공통 시트 셀값과 차이 > 1원 → FAIL (FR-011b)
 - 수수료 교차 차이 계산 (FR-012a) → 1원 초과 → FAIL (FR-012b)
-- 보험료 요율 차이 > 0.0001 → FAIL (FR-013) [NEEDS CLARIFICATION: 헌법 §IV 금액 기반 기준과 충돌]
+- 보험료 요율 차이 > 0.0001 → FAIL (FR-013) [NEEDS CLARIFICATION: 헌법 §IV 금액 기반 기준과 충돌. 사용자가 사내 기준으로 직접 확정 필요]
 - 비활성 비목에 값 입력 → FAIL (FR-014)
 
 ### Step 3-A: 실패 테스트 작성
@@ -191,7 +191,7 @@ git commit -m "test(EXE-15): Stage 3 산출내역서 교차 검증 테스트"
 
 **수용 기준**:
 - 공통!F4 vs revenue 차이 > 1원 → FAIL (FR-015)
-- 공통!P4 vs profit 차이 > 1원 → FAIL (FR-016) [NEEDS CLARIFICATION: FR-016 1원 임계 vs FR-016b 동적 임계 충돌]
+- 공통!P4 vs profit 차이 > 1원 → FAIL (FR-016) [NEEDS CLARIFICATION: FR-016 1원 임계 vs FR-016b 동적 임계 충돌. 사용자가 사내 기준으로 직접 확정 필요]
 - 공통!E3 vs project_name 불일치 → FAIL (FR-017)
 - 기간 셀({col}125 또는 {col}126) None → FAIL (FR-018)
 

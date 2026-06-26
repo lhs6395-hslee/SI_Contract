@@ -55,7 +55,7 @@ def test_validate_empty_data_returns_empty_list(auth_client, mock_cross_validate
 ## Task 2: 백엔드 — 충돌 유형 A/A'/B/C/D 감지 (FR-002 ~ FR-006)
 
 **수용기준**:
-- 유형별 골든셋 입력 데이터에서 `cross_validate`가 해당 충돌을 감지한다.
+- 유형별 검증 사례셋 입력 데이터에서 `cross_validate`가 해당 충돌을 감지한다.
 - 유형 A': 감지되더라도 자동 병합 로직 없음(반환만 함).
 - 견적서 1개만 있을 때 유형 A/A'/B/D는 감지되지 않는다.
 
@@ -372,7 +372,7 @@ def test_conflict_to_resolution_to_reviewer_pass(auth_client, bedrock_stub):
 
 **[NEEDS CLARIFICATION] 항목 해소 전 보류**:
 - SC-001 (응답 시간 목표): Bedrock P95 측정 후 확정.
-- SC-002 (골든셋 감지율): 골든셋 정의 후 확정.
+- SC-002 (검증 사례셋 감지율): 검증 사례셋 정의 후 확정.
 - SC-004 (익스포트 차단 위치): 코드 확인 후 테스트 추가.
 
 **커밋**: `chore(exe05): SC 게이트 체크리스트 완료 기록`
@@ -392,4 +392,4 @@ def test_conflict_to_resolution_to_reviewer_pass(auth_client, bedrock_stub):
 | Task 7 | E2E 통합 테스트 | ☐ |
 | Task 8 | SC 게이트 검증 | ☐ (일부 NEEDS CLARIFICATION 보류) |
 
-모든 Task가 완료되고 `[NEEDS CLARIFICATION]` 항목이 운영팀 인터뷰로 해소되면 EXE-05 완료.
+모든 Task가 완료되고 `[NEEDS CLARIFICATION]` 항목이 사용자가 사내 기준으로 직접 확정되면 EXE-05 완료.

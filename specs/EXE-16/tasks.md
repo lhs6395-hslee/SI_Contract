@@ -313,6 +313,6 @@ git commit -m "feat(sdd): EXE-16 Reviewer AI 의미검증 spec/plan/tasks"
 
 아래 항목은 명확화 후 별도 task로 추가:
 
-1. **SC-006 AI 이슈 탐지 정밀도 목표**: 골든셋 구성·측정 task는 목표 수치 확정 후 추가.
+1. **SC-006 AI 이슈 탐지 정밀도 목표**: 검증 사례셋 구성·측정 task는 목표 수치 확정 후 추가.
 2. **SC-007 Bedrock 응답 지연 SLA**: p95 목표 확정 후 부하 테스트 task 추가.
 3. **AI 이슈 → verdict 강제 조정 정책**: 정책 확정 시 `run_review` 수정 + 테스트 task 추가.

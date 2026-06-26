@@ -11,7 +11,7 @@
 - `backend/services/ai_core.py` 및 `backend/main.py` 의 현행 코드가 베이스라인.
 - AWS Bedrock credential(`BEDROCK_MODEL_ID`, `AWS_REGION`) 설정 완료.
 - EXE-17(인증) 구현 완료(모든 추출 엔드포인트가 `require_auth` 의존).
-- 골든셋 테스트 문서: 계약서 1건 + 내부견적품의서 1건 + 외주 견적서 1건 (GS네오텍 EPS 양식, 퀘이사존 양식 각 1건).
+- 검증 사례셋 테스트 문서: 계약서 1건 + 내부견적품의서 1건 + 외주 견적서 1건 (GS네오텍 EPS 양식, 퀘이사존 양식 각 1건).
 
 ---
 
@@ -41,7 +41,7 @@ def test_extract_null_for_missing_field(client, contract_file_no_sales_owner):
     assert data["salesOwner"]["confidence"] == "null"
 ```
 
-**예상 실패**: 골든셋 파일 미준비 시 `FileNotFoundError`.
+**예상 실패**: 검증 사례셋 파일 미준비 시 `FileNotFoundError`.
 
 ### Step 1-2: 최소 구현 확인
 
@@ -115,7 +115,7 @@ def test_cost_item_has_required_fields(client, vendor_quote_file):
 - `_force_category_by_name` 이름 키워드 강제 매핑 (`ai_core.py:379-385`) — 확인됨.
 - `COSTS_PROMPT` 자사 인력 제외 규칙 (`ai_core.py:284-316`) — 확인됨.
 
-**주의**: FR-006(자사 인력 제외)은 프롬프트 레벨 제어라 LLM 동작에 의존. 골든셋으로 실측 검증 필수.
+**주의**: FR-006(자사 인력 제외)은 프롬프트 레벨 제어라 LLM 동작에 의존. 검증 사례셋으로 실측 검증 필수.
 
 ### Step 2-3: 통과 확인
 
@@ -439,21 +439,21 @@ git commit -m "test(exe-02): FR-013 ai-service 위임 경로 검증 테스트"
 
 ## Task 9 — SC-001~004b 성공 기준 검증 (통합)
 
-**수용기준**: 골든셋(정상 LLM 응답 기준) 전체에 대해 SC-001~SC-004b 달성 확인.
+**수용기준**: 검증 사례셋(정상 LLM 응답 기준) 전체에 대해 SC-001~SC-004b 달성 확인.
 
-### Step 9-1: 골든셋 통합 테스트 작성
+### Step 9-1: 검증 사례셋 통합 테스트 작성
 
 ```python
-def test_sc001_extract_success_rate(client, all_golden_set_files):
-    """SC-001: /api/extract 성공률 100%."""
-    for f in all_golden_set_files:
+def test_sc001_extract_success_rate(client, all_verified_case_files):
+    """SC-001: /api/extract 성공률 100% (검증 사례셋 기준)."""
+    for f in all_verified_case_files:
         resp = client.post("/api/extract", files=[("files", f)])
         assert resp.status_code == 200
         data = resp.json()
         assert "projectName" in data, f"fallback 반환: {data}"
 
 def test_sc002_cost_category_valid_rate(client, all_vendor_quote_files):
-    """SC-002: 비목 category 표준 키 비율 100%."""
+    """SC-002: 비목 category 표준 키 비율 100% (검증 사례셋 기준)."""
     VALID = {"fee","labor","bonus","wage","welfare","travel","vehicle","equipment",
              "rent","transport","comm","print","safety","etc"}
     for f in all_vendor_quote_files:
@@ -482,7 +482,7 @@ def test_sc004b_vision_cap_warning_logged():
 
 ### Step 9-2: SC-005, SC-006 상태 확인
 
-- **SC-005(추출 정확도)**: `[NEEDS CLARIFICATION]` — 골든셋 베이스라인 측정 후 목표 수치 확정 필요.
+- **SC-005(추출 정확도)**: `[NEEDS CLARIFICATION]` — 검증 사례셋 베이스라인 측정 후 목표 수치 확정 필요.
 - **SC-006(응답 시간 P95)**: `[NEEDS CLARIFICATION]` — 부하 테스트 기준선 미정.
 
 이 두 항목은 확정 전까지 테스트 코드를 작성하지 않는다(임의 수치 금지).
@@ -515,4 +515,4 @@ git commit -m "test(exe-02): SC-001~004 통합 성공 기준 검증"
 - [ ] Task 9 통과: SC-001~004b 통합
 - [ ] SC-005(추출 정확도) 목표 수치 확정 → 테스트 추가 `[NEEDS CLARIFICATION]`
 - [ ] SC-006(응답 시간 P95) 기준선 측정 → 테스트 추가 `[NEEDS CLARIFICATION]`
-- [ ] 골든셋 문서 준비: 계약서·내부견적품의서·외주 견적서·EPS 자사견적서·스캔 PDF 각 1건 이상
+- [ ] 검증 사례셋 문서 준비: 계약서·내부견적품의서·외주 견적서·EPS 자사견적서·스캔 PDF 각 1건 이상

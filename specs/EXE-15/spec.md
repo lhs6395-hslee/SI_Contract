@@ -92,7 +92,7 @@
 
 - **FR-012b** (unwanted): IF 수수료 교차검증의 차이가 1원을 초과하면, THEN THE SYSTEM SHALL 수수료 교차검증 오류로 기록한다. [공식 코드: `reviewer.py:331-354`, `harness/verifier_rules.json: stages.3_breakdown.checks[1].tolerance=1`]
 
-- **FR-013** (optional): WHERE SprintContract.rates가 존재하고 expected_salary가 0보다 클 때, THE SYSTEM SHALL 공통 시트 보험료 요율 셀(국민연금·건강보험·산재보험·고용보험)과 contract.rates의 차이가 0.0001을 초과하면 보험료 오류로 기록한다. [공식 코드: `reviewer.py:359-388`, `harness/verifier_rules.json: stages.3_breakdown.checks[2].tolerance=0.0001`] [NEEDS CLARIFICATION: 헌법 §IV는 '보험료 검증 오차 1,000원 이상 FAIL'(금액 단위)로 정의하나, 본 FR-013은 '요율 차이 0.0001 초과 시 FAIL'(소수점 요율 단위)을 정의한다. 동일 보험료 검증 대상에 대해 단위·접근방식·임계가 상이하여 충돌 발생. 충돌 출처: constitution.md §IV vs harness/verifier_rules.json stages.3_breakdown.checks[2].tolerance. 운영팀/FDE 확인 필요.]
+- **FR-013** (optional): WHERE SprintContract.rates가 존재하고 expected_salary가 0보다 클 때, THE SYSTEM SHALL 공통 시트 보험료 요율 셀(국민연금·건강보험·산재보험·고용보험)과 contract.rates의 차이가 0.0001을 초과하면 보험료 오류로 기록한다. [공식 코드: `reviewer.py:359-388`, `harness/verifier_rules.json: stages.3_breakdown.checks[2].tolerance=0.0001`] [NEEDS CLARIFICATION: 헌법 §IV는 '보험료 검증 오차 1,000원 이상 FAIL'(금액 단위)로 정의하나, 본 FR-013은 '요율 차이 0.0001 초과 시 FAIL'(소수점 요율 단위)을 정의한다. 동일 보험료 검증 대상에 대해 단위·접근방식·임계가 상이하여 충돌 발생. 충돌 출처: constitution.md §IV vs harness/verifier_rules.json stages.3_breakdown.checks[2].tolerance. 사용자가 사내 기준으로 직접 확정 필요.]
 
 - **FR-014** (unwanted): IF active_items에서 비활성(False)인 비목의 공통 시트 셀값이 0이 아니면, THEN THE SYSTEM SHALL 비활성 비목 오류로 기록한다. [공식 코드: `reviewer.py:391-394`]
 
@@ -100,9 +100,9 @@
 
 - **FR-015** (unwanted): IF 공통 시트 F4(매출액, 천원)와 confirmed_fields.revenue의 차이가 1원을 초과하면, THEN THE SYSTEM SHALL 매출액 오류로 기록한다. [공식 코드: `reviewer.py:425-432`]
 
-- **FR-016** (unwanted): IF 공통 시트 P4(영업이익, 천원)와 confirmed_fields.profit의 차이가 1원을 초과하면, THEN THE SYSTEM SHALL 영업이익 오류로 기록한다. [공식 코드: `reviewer.py:436-444`] [NEEDS CLARIFICATION: SC-008 및 Edge Cases는 'max(abs(revenue)*0.01, 1000) 이내 차이는 WARN 처리, FAIL 아님'으로 더 넓은 허용 임계를 정의한다. 본 FR-016의 1원 임계와 SC-008의 동적 임계가 동일 검증 대상(영업이익)에 대해 충돌. 충돌 출처: FR-016(1원 임계) vs SC-008/reviewer.py:478(max 공식). 운영팀/FDE 확인 필요.]
+- **FR-016** (unwanted): IF 공통 시트 P4(영업이익, 천원)와 confirmed_fields.profit의 차이가 1원을 초과하면, THEN THE SYSTEM SHALL 영업이익 오류로 기록한다. [공식 코드: `reviewer.py:436-444`] [NEEDS CLARIFICATION: SC-008 및 Edge Cases는 'max(abs(revenue)*0.01, 1000) 이내 차이는 WARN 처리, FAIL 아님'으로 더 넓은 허용 임계를 정의한다. 본 FR-016의 1원 임계와 SC-008의 동적 임계가 동일 검증 대상(영업이익)에 대해 충돌. 충돌 출처: FR-016(1원 임계) vs SC-008/reviewer.py:478(max 공식). 사용자가 사내 기준으로 직접 확정 필요.]
 
-- **FR-016b** (unwanted): IF 공통 시트 P4(영업이익, 천원)와 confirmed_fields.profit의 차이가 `max(abs(revenue) * 0.01, 1000)` 이하이면, THEN THE SYSTEM SHALL 해당 차이를 FAIL로 기록하지 않는다. [NEEDS CLARIFICATION: 허용 공식의 기준 문서 출처 없음. 단일 코드 출처: `reviewer.py:478`. FR-016의 1원 임계와 본 FR-016b의 동적 임계가 충돌. 충돌 출처: FR-016(1원) vs FR-016b/reviewer.py:478(max 공식). 권위 문서 확인 필요.]
+- **FR-016b** (unwanted): IF 공통 시트 P4(영업이익, 천원)와 confirmed_fields.profit의 차이가 `max(abs(revenue) * 0.01, 1000)` 이하이면, THEN THE SYSTEM SHALL 해당 차이를 FAIL로 기록하지 않는다. [NEEDS CLARIFICATION: 허용 공식의 기준 문서 출처 없음. 단일 코드 출처: `reviewer.py:478`. FR-016의 1원 임계와 본 FR-016b의 동적 임계가 충돌. 충돌 출처: FR-016(1원) vs FR-016b/reviewer.py:478(max 공식). 사용자가 사내 기준 문서로 확정 필요.]
 
 - **FR-017** (unwanted): IF 공통 시트 E3(사업명)이 confirmed_fields.project_name과 일치하지 않으면, THEN THE SYSTEM SHALL 갑지 참조원본-사업명 오류로 기록한다. [공식 코드: `reviewer.py:450-456`]
 
@@ -142,7 +142,7 @@
 
 - **SC-002**: 1원 정밀도 — 계약금액·집행금액·급료합계·수수료 교차 금액 검증의 허용 오차는 **1원** 이하. 1원 초과 시 FAIL. [공식 코드: `harness/verifier_rules.json: precision=1`]
 
-- **SC-003**: 보험료 요율 검증 허용 오차 — 요율(소수점 표현) 차이 **0.0001 이하**. 초과 시 FAIL. [공식 코드: `harness/verifier_rules.json: stages.3_breakdown.checks[2].tolerance=0.0001`] [NEEDS CLARIFICATION: 헌법 §IV는 '보험료 검증 오차 1,000원 이상 FAIL'(금액 단위)로 정의하나, 본 SC-003은 요율 단위(0.0001) 임계를 사용한다. 동일 보험료 검증 대상에 대해 단위·임계가 상이하여 충돌. 충돌 출처: constitution.md §IV vs SC-003/FR-013. 운영팀/FDE 확인 필요.]
+- **SC-003**: 보험료 요율 검증 허용 오차 — 요율(소수점 표현) 차이 **0.0001 이하**. 초과 시 FAIL. [공식 코드: `harness/verifier_rules.json: stages.3_breakdown.checks[2].tolerance=0.0001`] [NEEDS CLARIFICATION: 헌법 §IV는 '보험료 검증 오차 1,000원 이상 FAIL'(금액 단위)로 정의하나, 본 SC-003은 요율 단위(0.0001) 임계를 사용한다. 동일 보험료 검증 대상에 대해 단위·임계가 상이하여 충돌. 충돌 출처: constitution.md §IV vs SC-003/FR-013. 사용자가 사내 기준으로 직접 확정 필요.]
 
 - **SC-004**: 당기수량 검증 허용 오차 — **0.01** 이하. 초과 시 FAIL. [공식 코드: `harness/verifier_rules.json: stages.1_fee_structure.checks[3].tolerance=0.01`]
 
@@ -189,20 +189,20 @@
 
 [NEEDS CLARIFICATION] 항목(강제):
 
-1. **영업이익 역산 WARN 허용 공식 + FR-016 임계 충돌** — 코드 `reviewer.py:478`의 `max(abs(revenue) * 0.01, 1000)` 기준(1% 또는 1,000원 중 큰 값)의 권위 문서 출처가 없음. FR-016의 1원 임계와 FR-016b의 동적 임계가 동일 검증 대상에서 충돌. 충돌 출처: FR-016(1원) vs FR-016b/reviewer.py:478(max 공식). 운영팀 확인 필요.
+1. **영업이익 역산 WARN 허용 공식 + FR-016 임계 충돌** — 코드 `reviewer.py:478`의 `max(abs(revenue) * 0.01, 1000)` 기준(1% 또는 1,000원 중 큰 값)의 권위 문서 출처가 없음. FR-016의 1원 임계와 FR-016b의 동적 임계가 동일 검증 대상에서 충돌. 충돌 출처: FR-016(1원) vs FR-016b/reviewer.py:478(max 공식). 사용자가 사내 기준으로 직접 확정 필요.
    - 현재 코드 단일 출처: `reviewer.py:478` (WARN 처리, FAIL 아님)
-   - 확인 방법: 집행계획서 작성 규칙 문서 또는 FDE 인터뷰
+   - 확인 방법: 사용자가 사내 기준 문서(집행계획서 작성 규칙 등)로 확정
 
 2. **수수료 코드 1/2/3 정량 판단 기준** — 설계 §6-1 항목 5번. `planner.md`에 "[추측] 가능"으로만 표현됨. 코드 `sprint_contract.py:61 FeeItem.code` 기본값=1이나 판단 기준 미명시.
    - 충돌 출처: `planner.md` (추측 표기) vs 코드 기본값 1
-   - 확인 방법: 수수료 코드 분류 기준 문서 또는 FDE 인터뷰
+   - 확인 방법: 사용자가 사내 수수료 코드 분류 기준 문서로 확정
 
 3. **보험료 요율 갱신 정책·적용 연도** — 집행 4.75/4.0674/0.796% vs 정산 4.5/4.0041/0.766% (설계 §6-1 항목 3번)
    - 충돌 출처: `REPORT_eps_values.md:174-180` 이원화 데이터
-   - 확인 방법: 연도별 보험요율 고시 문서 또는 FDE 인터뷰
+   - 확인 방법: 사용자가 연도별 보험요율 고시 문서로 확정
    - 본 EXE-15 스펙에서는 "contract.rates에서 넘어온 값을 그대로 검증에 사용"하는 구조로 처리. 요율값 자체는 EXE-03 스펙 권역.
 
 4. **보험료 검증 단위 충돌 (FR-013/SC-003 vs 헌법 §IV)** — 헌법 §IV: '보험료 검증 오차 1,000원 이상 FAIL'(금액 단위). FR-013·SC-003: '요율 차이 0.0001 초과 시 FAIL'(소수점 요율 단위). 동일 보험료 검증 대상에 대해 헌법과 스펙이 서로 다른 단위·임계를 정의.
    - 충돌 출처: `constitution.md §IV` vs `spec.md FR-013/SC-003`
-   - 확인 방법: 운영팀/FDE 인터뷰 또는 헌법 §IV 개정
+   - 확인 방법: 사용자가 사내 기준으로 직접 확정하거나 헌법 §IV를 개정
    - 해소 전까지 FR-013 및 SC-003 본문에 [NEEDS CLARIFICATION] 유지.

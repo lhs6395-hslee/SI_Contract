@@ -120,7 +120,7 @@ revision=0이면 수정집행 시트 생성 없이 원본 템플릿 그대로 �
 - **SC-003**: `all_revisions=[1, 2]` 시, (1차) 7시트의 `state` 속성이 `"hidden"`이고 (2차) 7시트에 `state` 속성이 없다(visible). (근거: `orchestrator.py:243`)
 - **SC-004**: `all_revisions=[]` 시, 출력 파일이 템플릿과 바이트 동일하다. (근거: `apply_revision_sheets:169-171`)
 - **SC-005**: `revision=12`(MAX_REVISION+1) 요청 시, 파이프라인이 산출물 xlsx를 생성하지 않고 오류 상태를 반환한다. (근거: `company_standards.py:12`)
-- **SC-006**: 수정집행 N차 체인(rev 0~6)에서 각 차수의 `"5-4. 수수료산출내역 (N차)"` 시트의 H9(당초), K9(변경), X9(당기)가 `golden_docs.json` 내 `B2_6차수정` 체인 기준값과 비교하여 1% 미만 오차 이내이다. (근거: `.pipeline/tests/test_revision_chain.py:144-151`, 골든셋: `golden_docs.json`)
+- **SC-006**: 수정집행 N차 체인(rev 0~6)에서 각 차수의 `"5-4. 수수료산출내역 (N차)"` 시트의 H9(당초), K9(변경), X9(당기)가 `golden_docs.json` 내 `B2_6차수정` 체인 기준값과 비교하여 1% 미만 오차 이내이다. (근거: `.pipeline/tests/test_revision_chain.py:144-151`, 검증 사례셋: `golden_docs.json`)
 - **SC-007**: N차 시트 생성 후 workbook.xml의 시트 등록 수 = (기존 시트 수) + 7×(차수 수)이다.
 
 ---

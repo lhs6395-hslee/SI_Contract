@@ -95,7 +95,7 @@ PM이 집행계획서 검토 결과를 받을 때, 수치 계산은 맞지만 �
 - **SC-003**: inputs_summary 전달 건수 = **최대 30건** (30건 초과 시 상위 30건 한정). `[공식 코드: reviewer.py:111 [:30]]`
 - **SC-004**: AI 의미검증 점수가 verdict 판정 임계(approved=0.85, needs_revision=0.60)에 **직접 영향 없음** — `avg_score`는 1~5단계 결과만 포함.  `[공식 코드: reviewer.py:578-585]`
 - **SC-005**: `max_tokens` 제한 = **256 토큰** (AI 응답 길이 상한). `[공식 코드: reviewer.py:135]`
-- **SC-006**: AI 이슈 탐지 정밀도 목표 — `[NEEDS CLARIFICATION]` (골든셋 검증 베이스라인 후 목표 수립 필요. 현재 정밀도·재현율 목표 수치 없음.)
+- **SC-006**: AI 이슈 탐지 정밀도 목표 — `[NEEDS CLARIFICATION]` (검증 사례셋 기준 베이스라인 후 목표 수립 필요. 현재 정밀도·재현율 목표 수치 없음.)
 - **SC-007**: Bedrock 응답 지연(p95) 목표 — `[NEEDS CLARIFICATION]` (SLA 수치 미정. read_timeout=60초 설정 있으나 p95 목표 미명시. `ai_core.py:26` 참조)
 
 ---
@@ -129,7 +129,7 @@ PM이 집행계획서 검토 결과를 받을 때, 수치 계산은 맞지만 �
 
 설계 §6-1 및 코드 대조로 확인된 미결 항목:
 
-1. **AI 이슈 탐지 정밀도·재현율 목표** — 골든셋(정상/비정상 SprintContract 페어) 구성 후 측정치 기반 목표 수립 필요. 현재 수치 없음. (SC-006)
+1. **AI 이슈 탐지 정밀도·재현율 목표** — 검증 사례셋(정상/비정상 SprintContract 페어) 구성 후 측정치 기반 목표 수립 필요. 현재 수치 없음. (SC-006)
 2. **Bedrock 응답 지연 SLA** — p95 목표 미정. 현재 `read_timeout=60`초만 설정(`ai_core.py:26`). (SC-007)
 3. **Bedrock 비용 예산** — Sonnet 호출 단가 및 월간 허용 예산 미명시.
 4. **AI 이슈가 verdict에 영향을 줘야 하는가** — 현재 코드는 avg_score 제외(`harness/verifier_rules.json:157` `"optional": true`). AI 이슈 심각도에 따라 verdict를 강제 조정하는 정책 미결.

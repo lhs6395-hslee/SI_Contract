@@ -151,7 +151,7 @@ staffPlan에 내부 인원이 있고 costItems에 labor 비목이 없을 때, �
    - 차장: company_standards.py=650만 vs executor.md=700만 `[NEEDS CLARIFICATION]`
    - 대리: company_standards.py=450만 vs executor.md=500만 / REPORT=550만 `[NEEDS CLARIFICATION]`
    - 사원: company_standards.py=350만 vs executor.md=450만 `[NEEDS CLARIFICATION]`
-   - 현행 코드 적용값: company_standards.py 기준(잠정). 운영팀 확정 전까지 임의값 생성 금지.
+   - 현행 코드 적용값: company_standards.py 기준(잠정). 사용자 확정 전까지 임의값 생성 금지.
 5. **DEFAULT_RATES(잠정)**: 간접 1.9%/관리 3.0%/국민연금 4.5%(집행기준 4.75%와 충돌)/건강보험 4.0041%(집행기준 4.0674%와 충돌)/산재 0.766%(집행기준 0.796%와 충돌)/고용보험 1.75%. (`company_standards.py:27-34` [`공식 코드`]) — 현행값은 정산 기준 추정이나 집행 기준과 충돌. Clarifications Retained 항목 4 참조 `[NEEDS CLARIFICATION]`. "윤지민과장 문의 25년 기준" 주석 근거, 공문 경로 미확정.
 6. **일할계산 분모 30일**: 시작월이 월 중간인 경우 잔여일 / 30 고정(업계 관행). (`contract_builder.py:117` 주석 [`공식 코드`])
 7. **fiscalYear fallback**: extracted에 fiscalYear 없으면 startDate 연도를 사용. (`contract_builder.py:335` [`공식 코드`])
@@ -161,7 +161,7 @@ staffPlan에 내부 인원이 있고 costItems에 labor 비목이 없을 때, �
 
 ## Clarifications Retained
 
-아래 항목은 설계 §6-1(강제 `[NEEDS CLARIFICATION]`)에서 이월한 미해결 충돌로, 운영팀(FDE) 인터뷰로 확정 전까지 임의값 생성 금지.
+아래 항목은 설계 §6-1(강제 `[NEEDS CLARIFICATION]`)에서 이월한 미해결 충돌로, 사용자가 사내 기준으로 직접 확정 전까지 임의값 생성 금지.
 
 1. **직급 단가표 2중 이상 충돌 (전 직급)** `[NEEDS CLARIFICATION]`
    - 과장 3중 충돌:
@@ -181,7 +181,7 @@ staffPlan에 내부 인원이 있고 costItems에 labor 비목이 없을 때, �
    - 사원 2중 충돌:
      - 출처 A: `company_standards.py` — 3,500,000원/월
      - 출처 B: `executor.md:101` — 4,500,000원/월
-   - 현재 코드 적용값: company_standards.py 기준(전 직급 잠정). 운영팀 확정 전까지 잠정.
+   - 현재 코드 적용값: company_standards.py 기준(전 직급 잠정). 사용자 확정 전까지 잠정.
 
 2. **MAX_REVISION 초과 처리 이원화**
    - `main.py:729-734`: HTTP 400 반환 (API 레이어)
